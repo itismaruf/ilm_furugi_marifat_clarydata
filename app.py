@@ -241,6 +241,24 @@ if st.session_state['page'] == "Загрузка данных":
         base_info = get_base_info(df)
         display_base_info(base_info)
 
+        # — Инициализация/обновление краткого summary (безопасно) —
+        data_sig = (tuple(df.columns), df.shape)
+        if st.session_state.get("_data_sig") != data_sig:
+            # датасет новый или изменился — пересобираем summary
+            summary = f"{df.shape[0]} строк, {df.shape[1]} столбцов; признаки: {', '.join(map(str, df.columns))}"
+            st.session_state["_data_sig"] = data_sig
+            st.session_state["data_summary"] = summary
+            try:
+                update_context("data_summary", summary)
+            except Exception:
+                pass
+        else:
+            # датасет тот же — берем сохранённое или формируем на лету
+            summary = st.session_state.get(
+                "data_summary",
+                f"{df.shape[0]} строк, {df.shape[1]} столбцов; признаки: {', '.join(map(str, df.columns))}"
+            )
+
         st.markdown("---")
 
         st.markdown("### Подключение ИИ")
@@ -267,7 +285,7 @@ if st.session_state['page'] == "Загрузка данных":
             else:
                 st.session_state["analysis_goal"] = user_desc
                 ai_response = interpret_with_ai(
-                    data_summary=st.session_state["data_summary"],
+                    data_summary=summary,  # <-- используем локальную summary
                     user_desc=user_desc,
                     df=df,
                     get_ai_fn=get_chatgpt_response
