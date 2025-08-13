@@ -243,7 +243,7 @@ if st.session_state['page'] == "Загрузка данных":
             try:
                 df = load_data(uploaded_file)
                 st.session_state["df"] = df
-                st.success("Данные успешно загружены", icon="✅")
+                st.success("Данные успешно загружены ", icon="✅")
             except Exception as e:
                 st.error(f"Ошибка при обработке данных: {e}", icon="🚫")
     else:
