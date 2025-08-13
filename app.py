@@ -204,6 +204,13 @@ st.markdown("""
 for name, icon in pages.items():
     st.sidebar.button(f"{icon} {name}", on_click=set_page, args=(name,))
 
+# Сброс истории чата при запуске приложения
+if "chat_history" in st.session_state:
+    del st.session_state["chat_history"]
+if "chat_initialized" in st.session_state:
+    del st.session_state["chat_initialized"]
+
+
 # Кнопка для очистки всех данных
 if st.sidebar.button("🔄 Очистить всё"):
     for key in list(st.session_state.keys()):
