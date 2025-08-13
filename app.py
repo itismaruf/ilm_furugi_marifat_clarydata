@@ -279,7 +279,7 @@ if st.session_state['page'] == "Загрузка данных":
         )
 
         # Кнопка для интерпретации
-        if st.button("✨ Получить интерпретацию от AI"):
+        if st.button("✨Получить интерпретацию от AI"):
             if not user_desc.strip():
                 st.warning("Пожалуйста, опишите цель анализа.")
             else:
