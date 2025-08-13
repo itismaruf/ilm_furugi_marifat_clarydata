@@ -29,3 +29,11 @@ def render_message(text: str, sender: str):
                 f"🤖 {text}</div>",
                 unsafe_allow_html=True,
             )
+
+
+def reset_chat_history():
+    """
+    Очищает историю чата в session_state.
+    """
+    import streamlit as st
+    st.session_state["chat_history"] = []

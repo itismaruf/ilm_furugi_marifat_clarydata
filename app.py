@@ -20,10 +20,10 @@ from Utils.visualization import plot_data_visualizations, suggest_visualization_
 
 from Utils.modeling_utils import *
 
-from Utils.chat import render_message
+from Utils.chat import render_message, reset_chat_history
 
 from AI_helper import (
-    get_chatgpt_response, update_context, send_correlation_to_ai, send_pivot_to_ai, chat_only, notify_ai_dataset_structure
+    get_chatgpt_response, update_context, send_correlation_to_ai, send_pivot_to_ai, chat_only, notify_ai_dataset_structure, reset_ai_conversation
 )
 
 # Конфигурация страницы
@@ -167,9 +167,19 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+if "_ai_session_inited" not in st.session_state:
+    reset_ai_conversation()                 # сброс глобальной истории для этой сессии
+    st.session_state["_ai_session_inited"] = True
+
 # --- Функция переключения страниц ---
 def set_page(page_name):
     st.session_state['page'] = page_name
+
+# Сброс истории чата при запуске приложения
+if "chat_history" in st.session_state:
+    del st.session_state["chat_history"]
+if "chat_initialized" in st.session_state:
+    del st.session_state["chat_initialized"]
 
 # --- Сайдбар с навигацией и стилем кнопок ---
 st.sidebar.header("🔧 Навигация")
@@ -1035,10 +1045,15 @@ if st.session_state.get("page") == "Моделирование и предска
             )
 
 
-# === Разъяснение результатов (с ИИ) ===
 if st.session_state.get("page") == "Разъяснение результатов (с ИИ)":
     st.title("💬 Поговорим о ваших данных?")
     st.markdown("---")
+
+    # Кнопка очистки чата
+    if st.button("🗑 Очистить чат"):
+        reset_chat_history()
+        st.success("Чат очищен.")
+        st.stop()  # чтобы сразу перерисовать пустой чат
 
     # Инициализируем историю чата
     st.session_state.setdefault("chat_history", [])
@@ -1047,20 +1062,21 @@ if st.session_state.get("page") == "Разъяснение результато�
     for msg in st.session_state.chat_history:
         render_message(msg["text"], msg["sender"])
 
-    # Ввод нового сообщения (единственный аргумент — это placeholder)
+    # Ввод нового сообщения
     question = st.chat_input("Напишите свой вопрос…")
 
     if question:
-        # отобразить ваш вопрос
+        # Отображаем вопрос пользователя
         st.session_state.chat_history.append({"text": question, "sender": "user"})
         render_message(question, "user")
 
-        # получить и отобразить ответ
+        # Получаем и показываем ответ ИИ
         with st.spinner("ИИ обрабатывает…"):
             answer = chat_only(question)
 
         st.session_state.chat_history.append({"text": answer, "sender": "ai"})
         render_message(answer, "ai")
+
 
 
 elif st.session_state['page'] == "Руководство пользователя":

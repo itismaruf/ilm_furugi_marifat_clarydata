@@ -7,14 +7,13 @@ from dotenv import load_dotenv
 load_dotenv()
 api_key = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
 
-if not api_key:
-    raise ValueError("❌ API-ключ не найден. Убедитесь, что он задан в .env или secrets.")
-
 # === История диалога и контекст проекта ===
+INITIAL_SYSTEM_PROMPT = "Ты помощник на русском языке. Отвечай чётко, по делу, кратко при необходимости и точно."
+
 chat_history = [
     {
         "role": "system",
-        "content": "Ты помощник на русском языке. Отвечай чётко, по делу, кратко при необходимости и точно."
+        "content": INITIAL_SYSTEM_PROMPT
     }
 ]
 context = {}
@@ -22,6 +21,20 @@ context = {}
 def update_context(key, value):
     """Добавление или обновление глобального контекста проекта."""
     context[key] = value
+
+def reset_ai_conversation():
+    """
+    Полный сброс памяти ИИ (истории и контекста).
+    Вызывай при очистке чата или при старте новой сессии.
+    """
+    global chat_history
+    chat_history = [
+        {
+            "role": "system",
+            "content": INITIAL_SYSTEM_PROMPT
+        }
+    ]
+    context.clear()
 
 # === Универсальная функция с учётом контекста ===
 def get_chatgpt_response(prompt, model="mistralai/devstral-small-2505:free"):
