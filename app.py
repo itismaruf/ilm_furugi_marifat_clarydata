@@ -222,7 +222,7 @@ if "chat_initialized" in st.session_state:
 
 
 # Кнопка для очистки всех данных
-if st.sidebar.button("🔄 Очистить всё"):
+if st.sidebar.button("🔄Очистить всё"):
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
