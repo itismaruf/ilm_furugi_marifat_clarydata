@@ -138,7 +138,7 @@ if "app_loaded" not in st.session_state:
         </script>
     """, unsafe_allow_html=True)
 
-    time.sleep(3)
+    time.sleep(4)
     st.session_state.app_loaded = True
     st.rerun()
 
