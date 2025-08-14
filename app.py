@@ -1045,6 +1045,10 @@ if st.session_state.get("page") == "Моделирование и предска
             )
 
 
+if "chat_history" not in st.session_state:
+    st.session_state["chat_history"] = []
+
+
 if st.session_state.get("page") == "Разъяснение результатов (с ИИ)":
     st.title("💬 Поговорим о ваших данных?")
     st.markdown("---")
