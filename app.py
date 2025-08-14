@@ -1045,37 +1045,37 @@ if st.session_state.get("page") == "Моделирование и предска
             )
 
 
-if "chat_history" not in st.session_state:
-    st.session_state["chat_history"] = []
-
-
 if st.session_state.get("page") == "Разъяснение результатов (с ИИ)":
     st.title("💬 Поговорим о ваших данных?")
     st.markdown("---")
 
     # Кнопка очистки чата
     if st.button("🗑 Очистить чат"):
-        reset_chat_history()  # очищает и UI, и глобальную историю AI
+        reset_chat_history()
         st.success("Чат очищен.")
-        st.stop()
+        st.stop()  # чтобы сразу перерисовать пустой чат
+
+    # Инициализируем историю чата
+    st.session_state.setdefault("chat_history", [])
 
     # Рендерим предыдущие сообщения
-    for msg in st.session_state["chat_history"]:
+    for msg in st.session_state.chat_history:
         render_message(msg["text"], msg["sender"])
 
     # Ввод нового сообщения
     question = st.chat_input("Напишите свой вопрос…")
 
     if question:
-        st.session_state["chat_history"].append({"text": question, "sender": "user"})
+        # Отображаем вопрос пользователя
+        st.session_state.chat_history.append({"text": question, "sender": "user"})
         render_message(question, "user")
 
+        # Получаем и показываем ответ ИИ
         with st.spinner("ИИ обрабатывает…"):
             answer = chat_only(question)
 
-        st.session_state["chat_history"].append({"text": answer, "sender": "ai"})
+        st.session_state.chat_history.append({"text": answer, "sender": "ai"})
         render_message(answer, "ai")
-
 
 
 elif st.session_state['page'] == "Руководство пользователя":
