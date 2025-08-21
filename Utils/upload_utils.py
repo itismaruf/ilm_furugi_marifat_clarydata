@@ -14,8 +14,11 @@ def looks_like_number(s: str) -> bool:
 def load_data(uploaded_file) -> pd.DataFrame:
     """
     Читает CSV/XLSX/XLS, приводит object-столбцы к числам, 
-    сохраняет лог преобразований в st.session_state.
+    сохраняет лог преобразований и имя файла в st.session_state.
     """
+    # Сохраняем оригинальное имя файла
+    st.session_state["original_filename"] = uploaded_file.name  
+
     fname = uploaded_file.name.lower()
     if fname.endswith((".xlsx", ".xls")):
         df = pd.read_excel(uploaded_file)
@@ -42,20 +45,9 @@ def load_data(uploaded_file) -> pd.DataFrame:
                 conversion_log.append(f"{col}: текст ({rate:.0%} чисел)")
         else:
             conversion_log.append(f"{col}: {dtype}")
+
     st.session_state["conversion_log"] = conversion_log
     return df
-
-
-def get_base_info(df: pd.DataFrame) -> dict:
-    """Возвращает базовую статистику по DataFrame."""
-    return {
-        "Строк": df.shape[0],
-        "Столбцов": df.shape[1],
-        "Пропусков": int(df.isnull().sum().sum()),
-        "Дубликатов": int(df.duplicated().sum()),
-        "Числовых": len(df.select_dtypes("number").columns),
-        "Категориальных": len(df.select_dtypes("object").columns),
-    }
 
 
 def display_preview(df: pd.DataFrame, n: int = 5):

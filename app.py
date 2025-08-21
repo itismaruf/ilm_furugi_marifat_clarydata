@@ -4,7 +4,7 @@ import os
 import time
 import plotly.express as px
 import joblib
-from io import BytesIO
+import io
 from sklearn.model_selection import train_test_split
 
 
@@ -231,7 +231,7 @@ if st.sidebar.button("🔄 Очистить всё"):
 # ===================== СТРАНИЦЫ =======================
 
 if st.session_state['page'] == "Загрузка данных":
-    st.caption('❗️Если вы раньше не пользовались ClaryData, сначала перейдите в раздел "Руководство пользователя"!')
+    st.caption('💡 Если вы не пользовались ClaryData, можете перейте в раздел "Руководство пользователя".')
     st.title("📥 Загрузка данных")
 
     # --- Загрузка данных ---
@@ -317,6 +317,10 @@ if st.session_state['page'] == "Загрузка данных":
 if st.session_state.get("page") == "Автообработка данных":
     st.title("⚙️ Автообработка данных")
 
+    # Инициализация флага изменений
+    if "data_changed" not in st.session_state:
+        st.session_state["data_changed"] = False
+
     if "df" not in st.session_state:
         st.warning("📥 Загрузите данные", icon="⚠️")
     else:
@@ -340,7 +344,6 @@ if st.session_state.get("page") == "Автообработка данных":
         if missing.empty:
             st.success("Нет пропусков в данных", icon="✅")
         else:
-            # Если есть пропуски — показываем таблицу
             st.table(
                 missing
                 .rename(columns={
@@ -361,6 +364,7 @@ if st.session_state.get("page") == "Автообработка данных":
             if st.button("🚀 Запустить автоочистку"):
                 before, log, new_df = run_auto_cleaning(df, target_col=target)
                 st.session_state["df"] = new_df
+                st.session_state["data_changed"] = True  # <-- Фиксируем изменения
 
                 if before.empty:
                     st.info("Пропусков не найдено", icon="✅")
@@ -397,8 +401,7 @@ if st.session_state.get("page") == "Автообработка данных":
 
         st.markdown("---")
 
-
-        # Ваша секция Ручной очистки
+        # 🔧 Ручная очистка
         st.subheader("🔧 Ручная очистка")
         with st.expander("✍️ Панель ручной очистки"):
             cols = st.multiselect(
@@ -409,10 +412,8 @@ if st.session_state.get("page") == "Автообработка данных":
                 "Действие:",
                 ["Удалить строки", "Удалить столбцы (с NaN)", "Заполнить NaN", "Удалить выбранные столбцы"]
             )
-            # Опция для показа таблиц
             show_tables = st.checkbox("Показывать сводку по NaN", value=True)
 
-            # Параметры для fillna
             method = value = None
             if action == "Заполнить NaN":
                 method = st.selectbox("Метод заполнения:", ["mean", "median", "mode", "constant"])
@@ -424,36 +425,68 @@ if st.session_state.get("page") == "Автообработка данных":
 
                 if action == "Удалить строки":
                     new_df = drop_rows_na(df, cols, target)
-
                 elif action == "Удалить столбцы (с NaN)":
                     new_df = drop_cols_na(df, cols)
-
                 elif action == "Удалить выбранные столбцы":
                     new_df = drop_selected_cols(df, cols)
-
                 elif action == "Заполнить NaN":
                     new_df = fill_na(df, cols, method, value)
 
-                # Сохраняем результат
                 st.session_state["df"] = new_df
+                st.session_state["data_changed"] = True  # <-- Фиксируем изменения
                 st.success("✅ Обработка завершена")
 
-                # Показ сводки
                 if show_tables and action != "Удалить выбранные столбцы":
-                    # Для всех, кроме удаления колонок, уместно показывать NaN
                     show_na_summary(before, new_df, cols)
                 elif show_tables and action == "Удалить выбранные столбцы":
-                    # Для удаления колонок — достаточно размера
                     st.markdown("**Размер до/после (строки, столбцы)**")
                     col1, col2 = st.columns(2)
                     col1.write(before.shape)
                     col2.write(new_df.shape)
 
+        # === 📥 Кнопка скачивания, если были изменения ===
+        if st.session_state.get("data_changed", False) and not st.session_state["df"].empty:
+            st.markdown("---")
+            st.subheader("📥 Скачать обработанные данные")
+
+            # Получаем имя исходного файла, если оно есть
+            base_name = "data"
+            if "original_filename" in st.session_state:
+                base_name = os.path.splitext(st.session_state["original_filename"])[0]
+
+            file_name = f"{base_name}_cleaned.csv"
+
+            # Готовим CSV в буфере
+            csv_buffer = io.BytesIO()
+            st.session_state["df"].to_csv(csv_buffer, index=False)
+            csv_buffer.seek(0)  # <-- ВАЖНО: сброс указателя в начало
+
+            st.success("✅ Файл готов к скачиванию")
+            st.download_button(
+                label=f"💾 Скачать {file_name}",
+                data=csv_buffer,
+                file_name=file_name,
+                mime="text/csv"
+            )
 
 
 # === Обработка выбросов ===
 if st.session_state.get("page") == "Обработка выбросов":
     st.title("🚩 Обработка выбросов")
+
+        # Инициализация флага изменений
+    if "data_changed" not in st.session_state:
+        st.session_state["data_changed"] = False
+
+    if "df" not in st.session_state:
+        st.warning("📥 Загрузите данные на предыдущей странице", icon="⚠️")
+    else:
+        df = st.session_state["df"]
+        numeric_cols = df.select_dtypes(include="number").columns.tolist()
+
+        # Инструкция
+        render_outlier_handling_info()
+        st.markdown("---")
 
     if "df" not in st.session_state:
         st.warning("📥 Загрузите данные на предыдущей странице", icon="⚠️")
@@ -607,6 +640,27 @@ if st.session_state.get("page") == "Обработка выбросов":
                 )
                 st.plotly_chart(fig_cmp_manual, use_container_width=True)
 
+        # === 📥 Кнопка скачивания, если были изменения ===
+        if st.session_state.get("data_changed", False) and not st.session_state["df"].empty:
+            st.markdown("---")
+            st.subheader("📥 Скачать обработанные данные")
+
+            base_name = "data"
+            if "original_filename" in st.session_state:
+                base_name = os.path.splitext(st.session_state["original_filename"])[0]
+            file_name = f"{base_name}_cleaned.csv"
+
+            csv_buffer = io.BytesIO()
+            st.session_state["df"].to_csv(csv_buffer, index=False)
+            csv_buffer.seek(0)
+
+            st.success("✅ Файл готов к скачиванию")
+            st.download_button(
+                label=f"💾 Скачать {file_name}",
+                data=csv_buffer,
+                file_name=file_name,
+                mime="text/csv"
+            )
 
 
 # === Визуализация ===
