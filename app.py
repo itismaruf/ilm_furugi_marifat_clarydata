@@ -20,7 +20,7 @@ from Utils.visualization import plot_data_visualizations, suggest_visualization_
 
 from Utils.modeling_utils import *
 
-from Utils.chat import render_message, reset_chat_history
+from Utils.chat import *
 
 from AI_helper import (
     get_chatgpt_response, update_context, send_correlation_to_ai, send_pivot_to_ai, chat_only, notify_ai_dataset_structure, reset_ai_conversation
