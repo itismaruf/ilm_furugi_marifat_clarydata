@@ -50,6 +50,18 @@ def load_data(uploaded_file) -> pd.DataFrame:
     return df
 
 
+def get_base_info(df: pd.DataFrame) -> dict:
+    """Возвращает базовую статистику по DataFrame."""
+    return {
+        "Строк": df.shape[0],
+        "Столбцов": df.shape[1],
+        "Пропусков": int(df.isnull().sum().sum()),
+        "Дубликатов": int(df.duplicated().sum()),
+        "Числовых": len(df.select_dtypes("number").columns),
+        "Категориальных": len(df.select_dtypes("object").columns),
+    }
+
+
 def display_preview(df: pd.DataFrame, n: int = 5):
     """Показывает первые n строк и скрытую описательную статистику с пояснениями."""
     st.markdown(f"### 🧾 Пример данных (первые {n} строк):")
