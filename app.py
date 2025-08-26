@@ -282,7 +282,7 @@ if st.session_state['page'] == "Загрузка данных":
         st.markdown("### Подключение ИИ")
         st.caption("Нажмите на кнопку ниже, чтобы позволить ИИ подключиться к анализу, получая нужную информацию о ваших данных.")
 
-        if st.button("🔌 Подключить ИИ к анализу"):
+        if st.button("🤖 Подключить ИИ к анализу"):
             msg = notify_ai_dataset_structure(df)
             st.success(msg)
 
