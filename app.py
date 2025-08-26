@@ -488,16 +488,6 @@ if st.session_state.get("page") == "Обработка выбросов":
         render_outlier_handling_info()
         st.markdown("---")
 
-    if "df" not in st.session_state:
-        st.warning("📥 Загрузите данные на предыдущей странице", icon="⚠️")
-    else:
-        df = st.session_state["df"]
-        numeric_cols = df.select_dtypes(include="number").columns.tolist()
-
-        # Инструкция
-        render_outlier_handling_info()
-        st.markdown("---")
-
         # Анализ и визуализация выбросов
         st.subheader("🔍 Анализ выбросов")
         with st.expander("👁 Просмотреть распределение выбросов"):
