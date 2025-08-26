@@ -654,7 +654,7 @@ if st.session_state.get("page") == "Обработка выбросов":
 
 
 # === Визуализация ===
-elif st.session_state["page"] == "Визуальный анализ (EDA)":
+elif st.session_state["page"] == "Визуальный анализ и EDA":
     st.title("📊 Визуальный анализ и EDA")
 
     if "df" not in st.session_state:
