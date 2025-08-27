@@ -958,20 +958,6 @@ if st.session_state.get("page") == "Моделирование и предска
         st.plotly_chart(plot_feature_importance(data["importance_df"]), use_container_width=True)
         st.info(data["short_text"])
 
-        with st.expander("📤 Зафиксировать метрики в ИИ", expanded=False):
-            # Placeholder для вывода статуса/спиннера именно тут
-            status_placeholder = st.empty()
-
-            if st.button("Отправить", use_container_width=True):
-                try:
-                    status_placeholder.info("⏳ Отправляем данные в ИИ...")
-
-                    summary = summarize_dataset_for_ai(
-                        target_col=data["target_col"],
-                        metrics=data["metrics"],
-                        importance_df=data["importance_df"]
-                    )
-
                     # Запоминаем в чатовой истории, чтобы ИИ знал эти данные в будущем диалоге
                     _ = chat_only(f"[FIX-MODEL-SUMMARY] {summary}")
 
