@@ -25,7 +25,18 @@ import plotly.graph_objects as go
 # =========================
 
 def split_features_by_type(df: pd.DataFrame, feature_cols: List[str]) -> Tuple[List[str], List[str]]:
-    """Разделяет признаки на числовые и категориальные."""
+    """Разделяет признаки на числовые и категориальные,
+       при отсутствии нужных колонок выводит сообщение пользователю.
+    """
+    # Находим отсутствующие колонки
+    missing_cols = [c for c in feature_cols if c not in df.columns]
+    if missing_cols:
+        st.error(
+            f"⚠️ Отсутствуют признаки: {missing_cols}. "
+            "Переобучите модель, чтобы снова появились поля ввода."
+        )
+        return [], []  # Возвращаем пустые списки, чтобы не упасть
+
     num_cols = [c for c in feature_cols if pd.api.types.is_numeric_dtype(df[c])]
     cat_cols = [c for c in feature_cols if not pd.api.types.is_numeric_dtype(df[c])]
     return num_cols, cat_cols
