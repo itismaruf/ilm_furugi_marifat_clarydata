@@ -958,15 +958,6 @@ if st.session_state.get("page") == "Моделирование и предска
         st.plotly_chart(plot_feature_importance(data["importance_df"]), use_container_width=True)
         st.info(data["short_text"])
 
-                    # Запоминаем в чатовой истории, чтобы ИИ знал эти данные в будущем диалоге
-                    _ = chat_only(f"[FIX-MODEL-SUMMARY] {summary}")
-
-                    status_placeholder.success("✅ Данные зафиксированы в ИИ")
-                except Exception as e:
-                    status_placeholder.error(f"Ошибка отправки: {e}")
-
-
-
         # 🔍 Прогноз
         st.subheader("🔍 Прогноз для одного объекта")
         num_cols, cat_cols = split_features_by_type(df, data["feature_cols"])
