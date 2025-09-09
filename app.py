@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 
 from Utils.upload_utils import load_data, get_base_info, display_preview, display_base_info, interpret_with_ai
 from Utils.automatic_data_processing import run_auto_cleaning, summarize_missing, run_auto_cleaning, \
-        drop_rows_na, drop_cols_na, fill_na, render_nan_handling_info, render_nan_rules_table, drop_selected_cols, show_na_summary
+        drop_rows_na, drop_cols_na, fill_na, render_nan_rules_table, drop_selected_cols, show_na_summary
 
 from Utils.outlier_utils import render_outlier_handling_info, detect_outliers_iqr, detect_outliers_zscore, \
     plot_outliers_distribution, outliers_summary, run_auto_outlier_removal, render_outlier_rules_table, \
@@ -307,6 +307,7 @@ if st.session_state['page'] == "Загрузка данных":
 # === Автообработка данных ===
 if st.session_state.get("page") == "Автообработка данных":
     st.title("⚙️ Автообработка данных")
+    st.caption('Обработка пропущенных значений (NaN), подробно в разделе "Руководство пользователя"!')
 
     # Инициализация флага изменений
     if "data_changed" not in st.session_state:
@@ -316,9 +317,6 @@ if st.session_state.get("page") == "Автообработка данных":
         st.warning("📥 Загрузите данные", icon="⚠️")
     else:
         df = st.session_state["df"]
-
-        # ℹ️ Краткая инструкция
-        render_nan_handling_info()
 
         # 🎯 Выбор целевой переменной
         target = st.selectbox(
@@ -466,6 +464,8 @@ if st.session_state.get("page") == "Автообработка данных":
 # === Обработка выбросов ===
 if st.session_state.get("page") == "Обработка выбросов":
     st.title("🚩 Обработка выбросов")
+    st.caption('В этом разделе вы можете исследовать и обрабатывать выбросы в ваших данных, подробно в разделе "Руководство пользователя"!')
+
 
         # Инициализация флага изменений
     if "data_changed" not in st.session_state:
@@ -650,6 +650,7 @@ if st.session_state.get("page") == "Обработка выбросов":
 # === Визуализация и EDA ===
 elif st.session_state["page"] == "Визуальный анализ и (EDA)":
     st.title("📊 Визуальный анализ (EDA)")
+    st.caption('В этом разделе вы можете сделать визуальный анализ и EDA, подробно в разделе "Руководство пользователя"!')
 
     if "df" not in st.session_state:
         st.warning("📥 Сначала загрузите данные.", icon="⚠️")
@@ -1186,6 +1187,7 @@ if st.session_state.get("page") == "Моделирование и предска
 # === Разъяснение результатов (с ИИ) ===
 if st.session_state.get("page") == "Разъяснение результатов (с ИИ)":
     st.title("💬 Поговорим о ваших данных?")
+    st.caption('Здесь вы можете попросить подсказку для анализа или использовать ИИ, чтобы сделать выводы.')
     st.markdown("---")
 
     # Кнопка очистки чата
