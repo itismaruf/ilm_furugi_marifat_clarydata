@@ -7,21 +7,6 @@ from typing import Dict, List
 
 import streamlit as st
 
-def render_outlier_handling_info():
-    """
-    Рендерит скрытую секцию с краткой инструкцией по работе с выбросами.
-    """
-    with st.expander("ℹ️ Инструкция по работе с разделом обработки выбросов", expanded=False):
-        st.markdown("""
-        В этом разделе вы можете исследовать и обрабатывать выбросы в ваших данных.
-
-        - Анализ выбросов с помощью IQR-метода или Z-score.
-        - Автообработка выбросов (стандартный IQR-критерий).
-        - Ручная очистка с выбором метода и границ, включая удаление по процентилям.
-        """)
-
-
-
 def detect_outliers_iqr(df: pd.DataFrame,
                         cols: list,
                         q_low: float = 0.25,

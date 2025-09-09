@@ -13,7 +13,7 @@ from Utils.upload_utils import load_data, get_base_info, display_preview, displa
 from Utils.automatic_data_processing import run_auto_cleaning, summarize_missing, run_auto_cleaning, \
         drop_rows_na, drop_cols_na, fill_na, render_nan_rules_table, drop_selected_cols, show_na_summary
 
-from Utils.outlier_utils import render_outlier_handling_info, detect_outliers_iqr, detect_outliers_zscore, \
+from Utils.outlier_utils import detect_outliers_iqr, detect_outliers_zscore, \
     plot_outliers_distribution, outliers_summary, run_auto_outlier_removal, render_outlier_rules_table, \
     remove_outliers_iqr, remove_outliers_zscore, cap_outliers, remove_outliers_percentile, plot_outlier_removal_comparison
 
@@ -476,10 +476,6 @@ if st.session_state.get("page") == "Обработка выбросов":
     else:
         df = st.session_state["df"]
         numeric_cols = df.select_dtypes(include="number").columns.tolist()
-
-        # Инструкция
-        render_outlier_handling_info()
-        st.markdown("---")
 
         # Анализ и визуализация выбросов
         st.subheader("🔍 Анализ выбросов")
