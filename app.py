@@ -1,3 +1,4 @@
+# Модули
 import streamlit as st
 import pandas as pd
 import os
@@ -17,6 +18,8 @@ from Utils.outlier_utils import render_outlier_handling_info, detect_outliers_iq
     remove_outliers_iqr, remove_outliers_zscore, cap_outliers, remove_outliers_percentile, plot_outlier_removal_comparison
 
 from Utils.visualization import plot_data_visualizations, suggest_visualization_combinations, plot_correlation_heatmap, generate_pivot_table
+
+from Utils.stats_tests import *
 
 from Utils.modeling_utils import *
 
@@ -138,7 +141,7 @@ if "app_loaded" not in st.session_state:
         </script>
     """, unsafe_allow_html=True)
 
-    time.sleep(4)
+    time.sleep(3)
     st.session_state.app_loaded = True
     st.rerun()
 
@@ -147,6 +150,9 @@ if "app_loaded" not in st.session_state:
 if "OPENAI_API_KEY" in st.secrets:
     os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 
+if "_ai_session_inited" not in st.session_state:
+    reset_ai_conversation()                 # сброс глобальной истории для этой сессии
+    st.session_state["_ai_session_inited"] = True
 
 # --- Инициализация первой страницы при запуске ---
 if 'page' not in st.session_state:
@@ -167,19 +173,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-if "_ai_session_inited" not in st.session_state:
-    reset_ai_conversation()                 # сброс глобальной истории для этой сессии
-    st.session_state["_ai_session_inited"] = True
-
 # --- Функция переключения страниц ---
 def set_page(page_name):
     st.session_state['page'] = page_name
-
-# Сброс истории чата при запуске приложения
-if "chat_history" in st.session_state:
-    del st.session_state["chat_history"]
-if "chat_initialized" in st.session_state:
-    del st.session_state["chat_initialized"]
 
 # --- Сайдбар с навигацией и стилем кнопок ---
 st.sidebar.header("🔧 Навигация")
@@ -187,7 +183,8 @@ pages = {
     "Загрузка данных": "📥",
     "Автообработка данных": "⚙️",
     "Обработка выбросов": "🚩",
-    "Визуальный анализ (EDA)": "📊",
+    "Визуальный анализ и (EDA)": "📊",
+    "Статистические тесты": "📉",
     "Моделирование и предсказание": "📟",
     "Разъяснение результатов (с ИИ)": "💬",
     "Руководство пользователя": "📝"
@@ -214,13 +211,6 @@ st.markdown("""
 for name, icon in pages.items():
     st.sidebar.button(f"{icon} {name}", on_click=set_page, args=(name,))
 
-# Сброс истории чата при запуске приложения
-if "chat_history" in st.session_state:
-    del st.session_state["chat_history"]
-if "chat_initialized" in st.session_state:
-    del st.session_state["chat_initialized"]
-
-
 # Кнопка для очистки всех данных
 if st.sidebar.button("🔄 Очистить всё"):
     for key in list(st.session_state.keys()):
@@ -229,9 +219,9 @@ if st.sidebar.button("🔄 Очистить всё"):
 
 
 # ===================== СТРАНИЦЫ =======================
-
+# === Загрузка данных ===
 if st.session_state['page'] == "Загрузка данных":
-    st.caption('💡 Если вы не пользовались ClaryData, можете перейте в раздел "Руководство пользователя".')
+    st.caption('💡Если вы не пользовались ClaryData, сначала перейдите в раздел "Руководство пользователя"!')
     st.title("📥 Загрузка данных")
 
     # --- Загрузка данных ---
@@ -282,9 +272,11 @@ if st.session_state['page'] == "Загрузка данных":
         st.markdown("### Подключение ИИ")
         st.caption("Нажмите на кнопку ниже, чтобы позволить ИИ подключиться к анализу, получая нужную информацию о ваших данных.")
 
-        if st.button("🔌 Подключить ИИ к анализу"):
-            msg = notify_ai_dataset_structure(df)
+        if st.button("🤖 Подключить ИИ к анализу"):
+            with st.spinner("Подключаем ИИ и анализируем структуру данных..."):
+                msg = notify_ai_dataset_structure(df)
             st.success(msg)
+
 
         st.markdown("---")
 
@@ -297,7 +289,7 @@ if st.session_state['page'] == "Загрузка данных":
         )
 
         # Кнопка для интерпретации
-        if st.button("✨Получить интерпретацию от AI"):
+        if st.button("✨ Получить интерпретацию от AI"):
             if not user_desc.strip():
                 st.warning("Пожалуйста, опишите цель анализа.")
             else:
@@ -309,7 +301,6 @@ if st.session_state['page'] == "Загрузка данных":
                     get_ai_fn=get_chatgpt_response
                 )
                 st.session_state["ai_interpretation"] = ai_response
-
 
 
 
@@ -470,6 +461,8 @@ if st.session_state.get("page") == "Автообработка данных":
             )
 
 
+
+
 # === Обработка выбросов ===
 if st.session_state.get("page") == "Обработка выбросов":
     st.title("🚩 Обработка выбросов")
@@ -477,16 +470,6 @@ if st.session_state.get("page") == "Обработка выбросов":
         # Инициализация флага изменений
     if "data_changed" not in st.session_state:
         st.session_state["data_changed"] = False
-
-    if "df" not in st.session_state:
-        st.warning("📥 Загрузите данные на предыдущей странице", icon="⚠️")
-    else:
-        df = st.session_state["df"]
-        numeric_cols = df.select_dtypes(include="number").columns.tolist()
-
-        # Инструкция
-        render_outlier_handling_info()
-        st.markdown("---")
 
     if "df" not in st.session_state:
         st.warning("📥 Загрузите данные на предыдущей странице", icon="⚠️")
@@ -663,8 +646,9 @@ if st.session_state.get("page") == "Обработка выбросов":
             )
 
 
-# === Визуализация ===
-elif st.session_state["page"] == "Визуальный анализ (EDA)":
+
+# === Визуализация и EDA ===
+elif st.session_state["page"] == "Визуальный анализ и (EDA)":
     st.title("📊 Визуальный анализ (EDA)")
 
     if "df" not in st.session_state:
@@ -861,7 +845,127 @@ elif st.session_state["page"] == "Визуальный анализ (EDA)":
                 st.info("Возможно, вы выбрали одни и те же столбцы!")
 
 
+# === Статистические тесты ===
+if st.session_state.get("page") == "Статистические тесты":
+    st.title("📊 Статистические тесты")
+    st.caption("Проверка гипотез: t‑test, ANOVA и Chi‑square")
 
+    # === 1. Проверка наличия данных ===
+    if "df" not in st.session_state or st.session_state.df is None or st.session_state.df.empty:
+        st.warning("📥 Сначала загрузите данные.")
+        st.stop()
+
+    df = st.session_state.df
+
+    # === 2. Подсказка по выбору теста ===
+    with st.expander("🧭 Как выбрать тест?", expanded=False):
+        st.markdown("""
+        - **t‑test** — 2 группы, числовая метрика → сравнение средних  
+        - **ANOVA** — 3+ групп, числовая метрика → сравнение средних  
+        - **Chi‑square** — 2 категориальных признака → проверка связи между категориями
+        """)
+
+    # === 3. Выбор теста ===
+    selected_test = st.selectbox(
+        "Выберите тест",
+        ["t-test", "ANOVA", "Chi-squared"],
+        key="stats_test_choice"
+    )
+
+    st.markdown("---")  # 🔹 Разделитель между выбором теста и настройками
+
+    # ===== T‑TEST =====
+    if selected_test == "t-test":
+        # --- Выбор переменных ---
+        num_cols = df.select_dtypes(include=["number"]).columns.tolist()
+        cat_cols_all = df.select_dtypes(exclude=["number"]).columns.tolist()
+
+        if not num_cols:
+            st.info("ℹ️ Нет числовых признаков для t‑test.")
+            st.stop()
+        if not cat_cols_all:
+            st.info("ℹ️ Нет категориальных признаков для t‑test.")
+            st.stop()
+
+        target_col = st.selectbox("Числовой признак (метрика)", num_cols, key="ttest_num")
+        group_col = st.selectbox("Категориальный признак", cat_cols_all, key="ttest_group")
+
+        levels = df[group_col].dropna().unique().tolist()
+        if len(levels) == 2:
+            st.caption(f"Группы: {levels[0]!r} и {levels[1]!r}")
+            paired = st.checkbox("Парный t‑test (paired)", value=False, key="ttest_paired")
+        else:
+            picked_levels = st.multiselect(
+                "Выберите ДВА уровня для сравнения",
+                options=levels, max_selections=2,
+                key="ttest_levels"
+            )
+            paired = st.checkbox("Парный t‑test (paired)", value=False, key="ttest_paired")
+
+        st.markdown("---")  # 🔹 Разделитель перед кнопкой запуска
+
+        # --- Запуск теста ---
+        if st.button("Выполнить t‑test", type="primary"):
+            if len(levels) == 2:
+                run_ttest(df, target_col, group_col, paired)
+            elif len(picked_levels) == 2:
+                df_pair = df[df[group_col].isin(picked_levels)].copy()
+                run_ttest(df_pair, target_col, group_col, paired)
+            else:
+                st.error("❌ Выберите ровно две категории.")
+
+    # ===== ANOVA =====
+    elif selected_test == "ANOVA":
+        # --- Выбор переменных ---
+        num_cols = df.select_dtypes(include=["number"]).columns.tolist()
+        cat_cols = df.select_dtypes(exclude=["number"]).columns.tolist()
+
+        if not num_cols:
+            st.info("ℹ️ Нет числовых признаков для ANOVA.")
+            st.stop()
+        if not cat_cols:
+            st.info("ℹ️ Нет категориальных признаков для ANOVA.")
+            st.stop()
+
+        target_col = st.selectbox("Числовой признак (метрика)", num_cols, key="anova_num")
+        group_col = st.selectbox("Категориальный признак (3+ группы)", cat_cols, key="anova_group")
+
+        st.markdown("---")  # 🔹 Разделитель перед кнопкой запуска
+
+        # --- Запуск теста ---
+        if st.button("Выполнить ANOVA", type="primary"):
+            run_anova(df, target_col, group_col)
+
+    # ===== CHI‑SQUARED =====
+    else:
+        # --- Выбор переменных ---
+        cat_cols = df.select_dtypes(exclude=["number"]).columns.tolist()
+        if len(cat_cols) < 2:
+            st.info("ℹ️ Для Chi‑square нужно минимум два категориальных признака.")
+            st.stop()
+
+        col1 = st.selectbox("Категориальный признак №1", cat_cols, key="chi_col1")
+        other_cats = [c for c in cat_cols if c != col1] or cat_cols
+        col2 = st.selectbox("Категориальный признак №2", other_cats, key="chi_col2")
+
+        plot_choice = st.radio(
+            "Тип графика",
+            ["Авто", "Heatmap", "Stacked bar", "Clustered bar"],
+            horizontal=True, key="chi_plot"
+        )
+
+        st.markdown("---")  # 🔹 Разделитель перед кнопкой запуска
+
+        # --- Запуск теста ---
+        if st.button("Выполнить Chi‑square", type="primary"):
+            if col1 == col2:
+                st.error("❌ Выберите разные категориальные признаки.")
+            else:
+                run_chi2(df, col1, col2, plot_choice)
+
+
+
+# === Моделирование и предсказание ===
 if st.session_state.get("page") == "Моделирование и предсказание":
     st.title("🤖 Моделирование и предсказание")
     st.caption("Фокус: понять, как и почему признаки влияют на целевую переменную")
@@ -968,29 +1072,6 @@ if st.session_state.get("page") == "Моделирование и предска
         st.plotly_chart(plot_feature_importance(data["importance_df"]), use_container_width=True)
         st.info(data["short_text"])
 
-        with st.expander("📤 Зафиксировать метрики в ИИ", expanded=False):
-            # Placeholder для вывода статуса/спиннера именно тут
-            status_placeholder = st.empty()
-
-            if st.button("Отправить", use_container_width=True):
-                try:
-                    status_placeholder.info("⏳ Отправляем данные в ИИ...")
-
-                    summary = summarize_dataset_for_ai(
-                        target_col=data["target_col"],
-                        metrics=data["metrics"],
-                        importance_df=data["importance_df"]
-                    )
-
-                    # Запоминаем в чатовой истории, чтобы ИИ знал эти данные в будущем диалоге
-                    _ = chat_only(f"[FIX-MODEL-SUMMARY] {summary}")
-
-                    status_placeholder.success("✅ Данные зафиксированы в ИИ")
-                except Exception as e:
-                    status_placeholder.error(f"Ошибка отправки: {e}")
-
-
-
         # 🔍 Прогноз
         st.subheader("🔍 Прогноз для одного объекта")
         num_cols, cat_cols = split_features_by_type(df, data["feature_cols"])
@@ -1044,6 +1125,9 @@ if st.session_state.get("page") == "Моделирование и предска
         # ======================
         # Экспорт
         # ======================
+
+        st.markdown("---")
+
         st.subheader("📦 Экспорт")
         cdl1, cdl2, cdl3, cdl4 = st.columns(4)
 
@@ -1099,6 +1183,7 @@ if st.session_state.get("page") == "Моделирование и предска
             )
 
 
+# === Разъяснение результатов (с ИИ) ===
 if st.session_state.get("page") == "Разъяснение результатов (с ИИ)":
     st.title("💬 Поговорим о ваших данных?")
     st.markdown("---")
@@ -1132,7 +1217,7 @@ if st.session_state.get("page") == "Разъяснение результато�
         render_message(answer, "ai")
 
 
-
+# === Руководство пользователя ===
 elif st.session_state['page'] == "Руководство пользователя":
     st.title("Руководство пользователя ClaryData")
     
@@ -1141,10 +1226,10 @@ elif st.session_state['page'] == "Руководство пользовател�
             content = f.read()
         st.markdown(content)
     except FileNotFoundError:
-        st.warning("Файл README.md не найден, проверь путь или название файла.")
+        st.warning("Файл README.md не найден — проверь путь или название файла.")
 
 
-# Футер внизу страницы (автор)
+# === Футер внизу страницы (автор) ===
 # Постоянная надпись внизу лево, вне зависимости от содержимого
 st.markdown("""
     <style>
