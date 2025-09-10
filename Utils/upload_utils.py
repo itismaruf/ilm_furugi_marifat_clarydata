@@ -3,6 +3,8 @@ import pandas as pd
 import streamlit as st
 import re
 from typing import Callable
+import chardet
+
 
 from AI_helper import update_context
 # Функция для загрузки и предварительной обработки данных 
@@ -10,6 +12,7 @@ from AI_helper import update_context
 def looks_like_number(s: str) -> bool:
     s = s.strip().replace(",", ".")
     return bool(re.match(r"^-?\d+(\.\d+)?$", s))
+
 
 def load_data(uploaded_file) -> pd.DataFrame:
     """
@@ -20,14 +23,32 @@ def load_data(uploaded_file) -> pd.DataFrame:
     st.session_state["original_filename"] = uploaded_file.name  
 
     fname = uploaded_file.name.lower()
+    
     if fname.endswith((".xlsx", ".xls")):
         df = pd.read_excel(uploaded_file)
+
     elif fname.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
+        # Определяем кодировку
+        raw = uploaded_file.read()
+        enc = chardet.detect(raw)["encoding"] or "utf-8"
+        uploaded_file.seek(0)  # вернем указатель в начало
+
+        try:
+            df = pd.read_csv(
+                uploaded_file,
+                sep=None,              # автоопределение разделителя
+                engine="python",       # более гибкий парсер
+                on_bad_lines="skip",   # пропускаем битые строки
+                encoding=enc
+            )
+        except Exception as e:
+            st.error(f"Ошибка при чтении CSV: {e}")
+            raise
     else:
         st.error("Неподдерживаемый формат файла")
         raise ValueError
 
+    # Лог преобразований типов
     conversion_log = []
     for col in df.columns:
         dtype = df[col].dtype
@@ -39,7 +60,7 @@ def load_data(uploaded_file) -> pd.DataFrame:
                 try:
                     df[col] = pd.to_numeric(df[col], errors="raise")
                     conversion_log.append(f"{col}: object → float ({rate:.0%})")
-                except:
+                except Exception:
                     conversion_log.append(f"{col}: оставлен как текст")
             else:
                 conversion_log.append(f"{col}: текст ({rate:.0%} чисел)")
