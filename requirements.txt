@@ -76,4 +76,3 @@ typing_extensions==4.13.1
 tzdata==2025.2
 urllib3==2.3.0
 yarl==1.19.0
-chardet==5.2.0
