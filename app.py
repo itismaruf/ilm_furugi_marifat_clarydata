@@ -744,20 +744,20 @@ elif st.session_state["page"] == "Визуальный анализ и (EDA)":
                         )
                         filters[col] = sel
 
-            with st.expander("📌 Показать только top-N категорий"):
-                top_n = None
-                limit_topn = st.checkbox(
-                    "Ограничить top-N",
-                    value=st.session_state.get("limit_topn", False),
-                    key="limit_topn"
-                )
-                if limit_topn:
-                    top_n = st.slider(
-                        "N категорий",
-                        3, 30,
-                        st.session_state.get("top_n_slider", 10),
-                        key="top_n_slider"
-                    )
+            # with st.expander("📌 Показать только top-N категорий"):
+            #     top_n = None
+            #     limit_topn = st.checkbox(
+            #         "Ограничить top-N",
+            #         value=st.session_state.get("limit_topn", False),
+            #         key="limit_topn"
+            #     )
+            #     if limit_topn:
+            #         top_n = st.slider(
+            #             "N категорий",
+            #             3, 30,
+            #             st.session_state.get("top_n_slider", 10),
+            #             key="top_n_slider"
+            #         )
 
             st.markdown("---")
             st.subheader("📈 График")
@@ -769,7 +769,6 @@ elif st.session_state["page"] == "Визуальный анализ и (EDA)":
                         df=df,
                         x=x,
                         y=y,
-                        top_n=top_n,
                         numeric_filters=filters,
                         chart_type=chart_type
                     ) 
