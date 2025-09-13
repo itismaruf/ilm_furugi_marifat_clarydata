@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 
 from Utils.upload_utils import load_data, get_base_info, display_preview, display_base_info, interpret_with_ai
 from Utils.automatic_data_processing import run_auto_cleaning, summarize_missing, run_auto_cleaning, \
-        drop_rows_na, drop_cols_na, fill_na, render_nan_rules_table, drop_selected_cols, show_na_summary
+        drop_rows_na, drop_cols_na, fill_na, render_nan_rules_table, drop_selected_cols, show_na_summary, remove_duplicates
 
 from Utils.outlier_utils import detect_outliers_iqr, detect_outliers_zscore, \
     plot_outliers_distribution, outliers_summary, run_auto_outlier_removal, render_outlier_rules_table, \
@@ -399,7 +399,7 @@ if st.session_state.get("page") == "Автообработка данных":
             )
             action = st.radio(
                 "Действие:",
-                ["Удалить строки", "Удалить столбцы (с NaN)", "Заполнить NaN", "Удалить выбранные столбцы"]
+                ["Удалить строки", "Удалить столбцы (с NaN)", "Заполнить NaN", "Удалить выбранные столбцы", "Удалить дубликаты"]
             )
             show_tables = st.checkbox("Показывать сводку по NaN", value=True)
 
@@ -419,7 +419,9 @@ if st.session_state.get("page") == "Автообработка данных":
                 elif action == "Удалить выбранные столбцы":
                     new_df = drop_selected_cols(df, cols)
                 elif action == "Заполнить NaN":
-                    new_df = fill_na(df, cols, method, value)
+                    new_df = fill_na(df, cols, method, value),
+                elif action == "Удалить дубликаты":  # 🆕 Новый обработчик
+                    new_df = remove_duplicates(df)
 
                 st.session_state["df"] = new_df
                 st.session_state["data_changed"] = True  # <-- Фиксируем изменения
@@ -693,15 +695,17 @@ elif st.session_state["page"] == "Визуальный анализ и (EDA)":
 
             st.markdown("---")
 
-            # === AI-подсказки
             with st.expander("💡 Получить советы для визуализации от ИИ по X и Y"):
                 if st.button("✨ Предложи комбинации", key="suggest_combinations"):
                     df_info = f"Переменные: {', '.join(df.columns)}"
                     with st.spinner("Генерируем рекомендации..."):
                         time.sleep(2)
-                        suggestion = suggest_visualization_combinations(df_info)
+                        st.session_state["eda_suggestion"] = suggest_visualization_combinations(df_info)
+
+                # Показываем сохранённую рекомендацию, если она есть
+                if "eda_suggestion" in st.session_state:
                     st.markdown("**📝 Рекомендации от ИИ:**")
-                    st.info(suggestion, icon="🤖")
+                    st.info(st.session_state["eda_suggestion"], icon="🤖")
 
             st.markdown("---")
 

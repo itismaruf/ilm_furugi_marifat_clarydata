@@ -249,3 +249,11 @@ def show_na_summary(before: pd.DataFrame,
     else:
         st.markdown(f"**{title_after}**")
         st.table(cnt_after.rename("NaN").to_frame())
+
+
+def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Удаляет полностью одинаковые строки из DataFrame.
+    Возвращает новый DataFrame без дубликатов.
+    """
+    return df.drop_duplicates().reset_index(drop=True)
