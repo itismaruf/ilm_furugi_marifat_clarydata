@@ -419,7 +419,7 @@ if st.session_state.get("page") == "Автообработка данных":
                 elif action == "Удалить выбранные столбцы":
                     new_df = drop_selected_cols(df, cols)
                 elif action == "Заполнить NaN":
-                    new_df = fill_na(df, cols, method, value),
+                    new_df = fill_na(df, cols, method, value)
                 elif action == "Удалить дубликаты":  # 🆕 Новый обработчик
                     new_df = remove_duplicates(df)
 
