@@ -3,15 +3,14 @@ import streamlit as st
 import pandas as pd
 import os
 import time
-import plotly.express as px
-import joblib
 import io
 from sklearn.model_selection import train_test_split
 
 
-from Utils.upload_utils import load_data, get_base_info, display_preview, display_base_info, interpret_with_ai
+from Utils.upload_utils import *
 from Utils.automatic_data_processing import run_auto_cleaning, summarize_missing, run_auto_cleaning, \
-        drop_rows_na, drop_cols_na, fill_na, render_nan_rules_table, drop_selected_cols, show_na_summary, remove_duplicates
+        drop_rows_na, drop_cols_na, fill_na, render_nan_rules_table, drop_selected_cols, show_na_summary, \
+    remove_duplicates
 
 from Utils.outlier_utils import detect_outliers_iqr, detect_outliers_zscore, \
     plot_outliers_distribution, outliers_summary, run_auto_outlier_removal, render_outlier_rules_table, \
@@ -23,15 +22,13 @@ from Utils.stats_tests import *
 
 from Utils.modeling_utils import *
 
-from Utils.chat import render_message, reset_chat_history
+from Utils.chat import *
 
-from AI_helper import (
-    get_chatgpt_response, update_context, send_correlation_to_ai, send_pivot_to_ai, chat_only, notify_ai_dataset_structure, reset_ai_conversation
-)
+from AI_helper import *
+
 
 # Конфигурация страницы
 st.set_page_config(layout="wide")
-
 
 # === Заставка ===
 if "app_loaded" not in st.session_state:
@@ -183,7 +180,7 @@ pages = {
     "Загрузка данных": "📥",
     "Автообработка данных": "⚙️",
     "Обработка выбросов": "🚩",
-    "Визуальный анализ и (EDA)": "📊",
+    "Визуальный анализ и EDA": "📊",
     "Статистические тесты": "📉",
     "Моделирование и предсказание": "📟",
     "Разъяснение результатов (с ИИ)": "💬",
@@ -244,15 +241,21 @@ if st.session_state['page'] == "Загрузка данных":
     if "df" in st.session_state:
         st.markdown("---")
 
-        # Превью и метрики
-        display_preview(df)
+        # Превью данных в экспандере
+        with st.expander("Пример данных (первые строки)", expanded=False):
+            show_data_head(df)
+
+        # Описательная статистика в отдельном экспандере
+        with st.expander("📑 Описательная статистика", expanded=False):
+            show_descriptive_stats(df)
+
+        # Метрики
         base_info = get_base_info(df)
         display_base_info(base_info)
 
-        # — Инициализация/обновление краткого summary (безопасно) —
+        # — Инициализация/обновление краткого summary —
         data_sig = (tuple(df.columns), df.shape)
         if st.session_state.get("_data_sig") != data_sig:
-            # датасет новый или изменился — пересобираем summary
             summary = f"{df.shape[0]} строк, {df.shape[1]} столбцов; признаки: {', '.join(map(str, df.columns))}"
             st.session_state["_data_sig"] = data_sig
             st.session_state["data_summary"] = summary
@@ -261,7 +264,6 @@ if st.session_state['page'] == "Загрузка данных":
             except Exception:
                 pass
         else:
-            # датасет тот же — берем сохранённое или формируем на лету
             summary = st.session_state.get(
                 "data_summary",
                 f"{df.shape[0]} строк, {df.shape[1]} столбцов; признаки: {', '.join(map(str, df.columns))}"
@@ -270,38 +272,20 @@ if st.session_state['page'] == "Загрузка данных":
         st.markdown("---")
 
         st.markdown("### Подключение ИИ")
-        st.caption("Нажмите на кнопку ниже, чтобы позволить ИИ подключиться к анализу, получая нужную информацию о ваших данных.")
+        st.caption("При желании укажите цель анализа — ИИ адаптирует помощь под неё.")
 
-        if st.button("🤖 Подключить ИИ к анализу"):
-            with st.spinner("Подключаем ИИ и анализируем структуру данных..."):
-                msg = notify_ai_dataset_structure(df)
-            st.success(msg)
-
-
-        st.markdown("---")
-
-        # Поле для описания цели анализа
         user_desc = st.text_area(
-            "📝 Уточните задачу анализа, чтобы ИИ мог более точно адаптировать свою помощь",
+            label="Цель анализа",
             placeholder="Например: Хочу проанализировать, как меняются цены на жильё по регионам",
             value=st.session_state.get("analysis_goal", ""),
-            height=100
+            height=100,
+            label_visibility="collapsed",
+            key="analysis_goal_input" 
         )
 
-        # Кнопка для интерпретации
-        if st.button("✨ Получить интерпретацию от AI"):
-            if not user_desc.strip():
-                st.warning("Пожалуйста, опишите цель анализа.")
-            else:
-                st.session_state["analysis_goal"] = user_desc
-                ai_response = interpret_with_ai(
-                    data_summary=summary,  # <-- используем локальную summary
-                    user_desc=user_desc,
-                    df=df,
-                    get_ai_fn=get_chatgpt_response
-                )
-                st.session_state["ai_interpretation"] = ai_response
-
+        if st.button("🤖 Подключить ИИ"):
+            msg = notify_ai_dataset_and_goal(df, user_desc, get_chatgpt_response)
+            st.success(msg)
 
 
 # === Автообработка данных ===
@@ -317,6 +301,9 @@ if st.session_state.get("page") == "Автообработка данных":
         st.warning("📥 Загрузите данные", icon="⚠️")
     else:
         df = st.session_state["df"]
+
+        # # ℹ️ Краткая инструкция
+        # render_nan_handling_info()
 
         # 🎯 Выбор целевой переменной
         target = st.selectbox(
@@ -393,6 +380,7 @@ if st.session_state.get("page") == "Автообработка данных":
         # 🔧 Ручная очистка
         st.subheader("🔧 Ручная очистка")
         with st.expander("✍️ Панель ручной очистки"):
+            
             cols = st.multiselect(
                 "Столбцы для обработки:",
                 [c for c in df.columns if c != target]
@@ -461,8 +449,6 @@ if st.session_state.get("page") == "Автообработка данных":
             )
 
 
-
-
 # === Обработка выбросов ===
 if st.session_state.get("page") == "Обработка выбросов":
     st.title("🚩 Обработка выбросов")
@@ -478,6 +464,10 @@ if st.session_state.get("page") == "Обработка выбросов":
     else:
         df = st.session_state["df"]
         numeric_cols = df.select_dtypes(include="number").columns.tolist()
+
+        # # Инструкция
+        # render_outlier_handling_info()
+        # st.markdown("---")
 
         # Анализ и визуализация выбросов
         st.subheader("🔍 Анализ выбросов")
@@ -553,7 +543,7 @@ if st.session_state.get("page") == "Обработка выбросов":
         st.markdown("---")
 
         st.subheader("🔧 Ручная очистка выбросов")
-        with st.expander("✍️ Панель ручной очистки выбросов", expanded=True):
+        with st.expander("✍️ Панель ручной очистки выбросов", expanded=False):
             col1, col2 = st.columns(2)
             with col1:
                 cols_manual = st.multiselect(
@@ -644,17 +634,16 @@ if st.session_state.get("page") == "Обработка выбросов":
             )
 
 
-
 # === Визуализация и EDA ===
-elif st.session_state["page"] == "Визуальный анализ и (EDA)":
-    st.title("📊 Визуальный анализ (EDA)")
+elif st.session_state["page"] == "Визуальный анализ и EDA":
+    st.title("📊 Визуальный анализ и EDA")
     st.caption('В этом разделе вы можете сделать визуальный анализ и EDA, подробно в разделе "Руководство пользователя"!')
+
 
     if "df" not in st.session_state:
         st.warning("📥 Сначала загрузите данные.", icon="⚠️")
     else:
         df = st.session_state["df"]
-        st.markdown("---")
 
         # === 🔖 Вкладки ===
         tabs = st.tabs(["📈 Графики", "❄️ Корреляции", "📊 Сводные таблицы"])
@@ -662,21 +651,24 @@ elif st.session_state["page"] == "Визуальный анализ и (EDA)":
         # === 📈 Вкладка: Графики ===
         with tabs[0]:
             st.subheader("🧭 Выбор переменных")
-            st.markdown("Выберите переменные, которые вы хотите визуализировать по осям X и Y")
 
-            x = st.selectbox(
-                "🟥 Ось X",
-                df.columns,
-                index=st.session_state.get("eda_x_index", 0),
-                key="eda_x"
-            )
-            y_options = [""] + list(df.columns)
-            y = st.selectbox(
-                "🟦 Ось Y (необязательно)",
-                y_options,
-                index=st.session_state.get("eda_y_index", 0),
-                key="eda_y"
-            ) or None
+            # X и Y в одной строке
+            col1, col2 = st.columns(2)
+            with col1:
+                x = st.selectbox(
+                    "🟥 Ось X",
+                    df.columns,
+                    index=st.session_state.get("eda_x_index", 0),
+                    key="eda_x"
+                )
+            with col2:
+                y_options = [""] + list(df.columns)
+                y = st.selectbox(
+                    "🟦 Ось Y (необязательно)",
+                    y_options,
+                    index=st.session_state.get("eda_y_index", 0),
+                    key="eda_y"
+                ) or None
 
             st.session_state["eda_x_index"] = list(df.columns).index(x)
             st.session_state["eda_y_index"] = y_options.index(y if y else "")
@@ -685,99 +677,72 @@ elif st.session_state["page"] == "Визуальный анализ и (EDA)":
                 st.warning("Переменные X и Y не должны совпадать.")
                 y = None
 
-            # === Кнопка построения графика
-            build_chart = False
-            if x:
-                build_chart = st.button("📊 Построить график", key="build_chart")
-                st.info("📉 График появится ниже после нажатия кнопки.")
-            else:
-                st.info("Пожалуйста, выберите хотя бы переменную для оси X.")
-
             st.markdown("---")
 
-            with st.expander("💡 Получить советы для визуализации от ИИ по X и Y"):
+            # === Тип графика ===
+            with st.expander("🎨 Тип графика", expanded=True):
+                chart_options = [
+                    "Автоматически", "Гистограмма", "Круговая диаграмма",
+                    "Точечный график", "Boxplot", "Bar-график", "Лайнплот"
+                ]
+                # убираем лишний отступ — label пустой
+                chart_type = st.selectbox(
+                    label="",
+                    options=chart_options,
+                    index=st.session_state.get("eda_chart_index", 0),
+                    key="eda_chart"
+                )
+                st.session_state["eda_chart_index"] = chart_options.index(chart_type)
+
+                st.caption("Выберите подходящий тип графика, затем нажмите кнопку ниже.")
+                build_chart = st.button("📊 Построить график", key="build_chart")
+
+            # === Советы от ИИ ===
+            with st.expander("💡 Получить советы для визуализации от ИИ"):
                 if st.button("✨ Предложи комбинации", key="suggest_combinations"):
                     df_info = f"Переменные: {', '.join(df.columns)}"
                     with st.spinner("Генерируем рекомендации..."):
                         time.sleep(2)
                         st.session_state["eda_suggestion"] = suggest_visualization_combinations(df_info)
 
-                # Показываем сохранённую рекомендацию, если она есть
                 if "eda_suggestion" in st.session_state:
                     st.markdown("**📝 Рекомендации от ИИ:**")
                     st.info(st.session_state["eda_suggestion"], icon="🤖")
 
+            # Разделитель после советов
             st.markdown("---")
 
-            # === Тип графика
-            st.subheader("🎨 Тип графика")
-            chart_options = [
-                "Автоматически", "Гистограмма", "Круговая диаграмма",
-                "Точечный график", "Boxplot", "Bar-график", "Лайнплот"
-            ]
-            chart_type = st.selectbox(
-                "Выберите график",
-                chart_options,
-                index=st.session_state.get("eda_chart_index", 0),
-                key="eda_chart"
-            )
-            st.session_state["eda_chart_index"] = chart_options.index(chart_type)
-
-            st.markdown("---")
-
-            # === Фильтры
-            with st.expander("🔍 Фильтры по числовым переменным"):
+            # === График с фильтрами ===
+            with st.expander("📈 График с фильтрами", expanded=True):
                 filters = {}
                 cols_to_filter = [x] + ([y] if y else [])
                 for col in dict.fromkeys(cols_to_filter):
                     if pd.api.types.is_numeric_dtype(df[col]):
                         lo, hi = float(df[col].min()), float(df[col].max())
-                        if lo == hi:
-                            st.info(f"⚠️ Для «{col}» фильтр не применён: значения одинаковы ({lo})")
-                            continue
-                        sel = st.slider(
-                            f"Фильтр по {col}",
-                            min_value=lo,
-                            max_value=hi,
-                            value=st.session_state.get(f"slider_{col}", (lo, hi)),
-                            key=f"slider_{col}"
+                        if lo != hi:
+                            sel = st.slider(
+                                f"Фильтр по {col}",
+                                min_value=lo,
+                                max_value=hi,
+                                value=st.session_state.get(f"slider_{col}", (lo, hi)),
+                                key=f"slider_{col}"
+                            )
+                            filters[col] = sel
+
+                if build_chart:
+                    with st.spinner("Построение графика..."):
+                        time.sleep(2.5)
+                        fig = plot_data_visualizations(
+                            df=df,
+                            x=x,
+                            y=y,
+                            numeric_filters=filters,
+                            chart_type=chart_type
                         )
-                        filters[col] = sel
-
-            # with st.expander("📌 Показать только top-N категорий"):
-            #     top_n = None
-            #     limit_topn = st.checkbox(
-            #         "Ограничить top-N",
-            #         value=st.session_state.get("limit_topn", False),
-            #         key="limit_topn"
-            #     )
-            #     if limit_topn:
-            #         top_n = st.slider(
-            #             "N категорий",
-            #             3, 30,
-            #             st.session_state.get("top_n_slider", 10),
-            #             key="top_n_slider"
-            #         )
-
-            st.markdown("---")
-            st.subheader("📈 График")
-
-            if build_chart:
-                with st.spinner("Построение графика..."):
-                    time.sleep(2.5)
-                    fig = plot_data_visualizations(
-                        df=df,
-                        x=x,
-                        y=y,
-                        numeric_filters=filters,
-                        chart_type=chart_type
-                    ) 
-
-                if fig:
-                    st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("🎯 Чтобы увидеть график, сначала выберите переменные выше и нажмите кнопку «Построить график».")
-
+                    if fig:
+                        st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("🎯 Выберите переменные и нажмите «Построить график».")
 
 
         # === ❄️ Вкладка: Корреляции ===
@@ -964,7 +929,6 @@ if st.session_state.get("page") == "Статистические тесты":
                 run_chi2(df, col1, col2, plot_choice)
 
 
-
 # === Моделирование и предсказание ===
 if st.session_state.get("page") == "Моделирование и предсказание":
     st.title("🤖 Моделирование и предсказание")
@@ -999,17 +963,18 @@ if st.session_state.get("page") == "Моделирование и предска
         st.error("Нет признаков для обучения (все поля — это Target).")
         st.stop()
 
-    # ====== Настройки модели ======
-    st.subheader("⚙️ Настройки модели")
-    c1, c2 = st.columns(2)
-    with c1:
-        C_value = st.number_input("Параметр регуляризации C", 0.01, 100.0, 1.0, 0.01)
-        penalty = st.selectbox("Тип регуляризации", ["l1", "l2"], index=1)
-        use_class_weight = st.checkbox("Сбалансировать веса классов", value=False)
-    with c2:
-        threshold = st.slider("Порог классификации", 0.05, 0.95, 0.5, 0.05)
-        test_size = st.slider("Размер тестовой выборки (%)", 10, 50, 20, 5) / 100
-        max_iter = st.number_input("Макс. итераций", 100, 5000, 1000, 100)
+    with st.expander("⚙️ Настройки модели", expanded=False):
+        c1, c2 = st.columns(2)
+
+        with c1:
+            C_value = st.number_input("Параметр регуляризации C", 0.01, 100.0, 1.0, 0.01)
+            penalty = st.selectbox("Тип регуляризации", ["l1", "l2"], index=1)
+            max_iter = st.number_input("Макс. итераций", 100, 5000, 1000, 100)
+
+        with c2:
+            threshold = st.slider("Порог классификации", 0.05, 0.95, 0.5, 0.05)
+            test_size = st.slider("Размер тестовой выборки (%)", 10, 50, 20, 5) / 100
+            use_class_weight = st.checkbox("Сбалансировать веса классов", value=False)
 
     # ====== Обучение модели ======
     if st.button("🚀 Обучить / переобучить модель", use_container_width=True):
@@ -1073,125 +1038,125 @@ if st.session_state.get("page") == "Моделирование и предска
         st.info(data["short_text"])
 
         # 🔍 Прогноз
-        st.subheader("🔍 Прогноз для одного объекта")
-        num_cols, cat_cols = split_features_by_type(df, data["feature_cols"])
+        with st.expander("🔍 Прогноз для одного объекта", expanded=False):
+            num_cols, cat_cols = split_features_by_type(df, data["feature_cols"])
 
-        # UI: строим словарь значений
-        user_input = {}
-        cols = st.columns(3) if len(data["feature_cols"]) >= 9 else (st.columns(2) if len(data["feature_cols"]) >= 4 else st.columns(1))
+            # UI: строим словарь значений
+            user_input = {}
+            cols = st.columns(3) if len(data["feature_cols"]) >= 9 else (st.columns(2) if len(data["feature_cols"]) >= 4 else st.columns(1))
 
-        # Порядок: числовые, затем категориальные, чтобы было удобнее
-        all_feats = num_cols + cat_cols
+            # Порядок: числовые, затем категориальные
+            all_feats = num_cols + cat_cols
 
-        for i, feat in enumerate(all_feats):
-            with cols[i % len(cols)]:
-                series = df[feat]
-                if pd.api.types.is_numeric_dtype(series):
-                    vmin = float(series.min())
-                    vmax = float(series.max())
-                    vdefault = float(series.median())
-                    user_input[feat] = st.number_input(
-                        f"{feat}",
-                        min_value=vmin if np.isfinite(vmin) else None,
-                        max_value=vmax if np.isfinite(vmax) else None,
-                        value=vdefault if np.isfinite(vdefault) else 0.0
-                    )
+            for i, feat in enumerate(all_feats):
+                with cols[i % len(cols)]:
+                    series = df[feat]
+                    if pd.api.types.is_numeric_dtype(series):
+                        vmin = float(series.min())
+                        vmax = float(series.max())
+                        vdefault = float(series.median())
+                        user_input[feat] = st.number_input(
+                            f"{feat}",
+                            min_value=vmin if np.isfinite(vmin) else None,
+                            max_value=vmax if np.isfinite(vmax) else None,
+                            value=vdefault if np.isfinite(vdefault) else 0.0
+                        )
+                    else:
+                        options = pd.Series(series.dropna().unique()).astype(str).tolist()
+                        options = sorted(options)[:300]  # safety
+                        if not options:
+                            options = ["(пусто)"]
+                        user_input[feat] = st.selectbox(f"{feat}", options, index=0)
+
+            if st.button("Сделать прогноз"):
+                X_input_df, errors = validate_and_prepare_single_input(df, data["feature_cols"], user_input)
+                if errors:
+                    for k, msg in errors.items():
+                        st.warning(f"{k}: {msg}")
                 else:
-                    options = pd.Series(series.dropna().unique()).astype(str).tolist()
-                    options = sorted(options)[:300]  # safety
-                    if not options:
-                        options = ["(пусто)"]
-                    user_input[feat] = st.selectbox(f"{feat}", options, index=0)
-
-        if st.button("Сделать прогноз"):
-            X_input_df, errors = validate_and_prepare_single_input(df, data["feature_cols"], user_input)
-            if errors:
-                for k, msg in errors.items():
-                    st.warning(f"{k}: {msg}")
-            else:
-                try:
-                    result = predict_with_explanation(
-                        model=data["model"],
-                        meta=data["meta"],
-                        X_input_df=X_input_df,
-                        threshold=data["threshold"],
-                        top_k=3
-                    )
-                    st.success(f"Предсказанный класс: {result['pred_class']} (вероятность {result['proba']:.2f})")
-                    st.write(result["explanation"])
-                except Exception as e:
-                    st.error(f"Не удалось получить прогноз: {e}")
+                    try:
+                        result = predict_with_explanation(
+                            model=data["model"],
+                            meta=data["meta"],
+                            X_input_df=X_input_df,
+                            threshold=data["threshold"],
+                            top_k=3
+                        )
+                        st.success(f"Предсказанный класс: {result['pred_class']}")
+                        st.write(result["explanation"])
+                    except Exception as e:
+                        st.error(f"Не удалось получить прогноз: {e}")
 
         # ======================
         # Экспорт
         # ======================
-
         st.markdown("---")
 
-        st.subheader("📦 Экспорт")
-        cdl1, cdl2, cdl3, cdl4 = st.columns(4)
+        with st.expander("📦 Экспорт", expanded=False):
+            cdl1, cdl2, cdl3, cdl4 = st.columns(4)
 
-        with cdl1:
-            try:
-                model_bytes = serialize_model(data["model"])
+            with cdl1:
+                try:
+                    model_bytes = serialize_model(data["model"])
+                    st.download_button(
+                        "Скачать модель (.pkl)",
+                        data=model_bytes,
+                        file_name="logreg_model.pkl",
+                        mime="application/octet-stream",
+                        use_container_width=True
+                    )
+                except Exception as e:
+                    st.error(f"Экспорт модели: {e}")
+
+            with cdl2:
+                imp_csv = data["importance_df"].to_csv(index=False).encode("utf-8")
                 st.download_button(
-                    "Скачать модель (.pkl)",
-                    data=model_bytes,
-                    file_name="logreg_model.pkl",
-                    mime="application/octet-stream",
+                    "Скачать важности (CSV)",
+                    data=imp_csv,
+                    file_name="feature_importance.csv",
+                    mime="text/csv",
                     use_container_width=True
                 )
-            except Exception as e:
-                st.error(f"Экспорт модели: {e}")
 
-        with cdl2:
-            imp_csv = data["importance_df"].to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "Скачать важности (CSV)",
-                data=imp_csv,
-                file_name="feature_importance.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
+            with cdl3:
+                metrics_df = pd.DataFrame([data["metrics"]])
+                metr_csv = metrics_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    "Скачать метрики (CSV)",
+                    data=metr_csv,
+                    file_name="metrics.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
 
-        with cdl3:
-            metrics_df = pd.DataFrame([data["metrics"]])
-            metr_csv = metrics_df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "Скачать метрики (CSV)",
-                data=metr_csv,
-                file_name="metrics.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-
-        with cdl4:
-            md = generate_markdown_report(
-                target_col=data["target_col"],
-                metrics=data["metrics"],
-                importance_df=data["importance_df"],
-                threshold=data["threshold"],
-                model_params=data["params"],
-                top_n=10
-            )
-            st.download_button(
-                "Скачать отчёт (MD)",
-                data=md.encode("utf-8"),
-                file_name="model_report.md",
-                mime="text/markdown",
-                use_container_width=True
-            )
+            with cdl4:
+                md = generate_markdown_report(
+                    target_col=data["target_col"],
+                    metrics=data["metrics"],
+                    importance_df=data["importance_df"],
+                    threshold=data["threshold"],
+                    model_params=data["params"],
+                    top_n=10
+                )
+                st.download_button(
+                    "Скачать отчёт (MD)",
+                    data=md.encode("utf-8"),
+                    file_name="model_report.md",
+                    mime="text/markdown",
+                    use_container_width=True
+                )
 
 
 # === Разъяснение результатов (с ИИ) ===
 if st.session_state.get("page") == "Разъяснение результатов (с ИИ)":
     st.title("💬 Поговорим о ваших данных?")
-    st.caption('Здесь вы можете попросить подсказку для анализа или использовать ИИ, чтобы сделать выводы.')
+    st.markdown("---")
+
     # Кнопка очистки чата
     if st.button("🗑 Очистить чат"):
         reset_chat_history()
         st.success("Чат очищен.")
-        st.stop()  # чтобы сразу перерисовать пустой чат
+        st.stop()
 
     # Инициализируем историю чата
     st.session_state.setdefault("chat_history", [])
@@ -1208,9 +1173,9 @@ if st.session_state.get("page") == "Разъяснение результато�
         st.session_state.chat_history.append({"text": question, "sender": "user"})
         render_message(question, "user")
 
-        # Получаем и показываем ответ ИИ
+        # Получаем и показываем ответ ИИ с учётом контекста
         with st.spinner("ИИ обрабатывает…"):
-            answer = chat_only(question)
+            answer = continue_chat(question)  # 👈 вместо chat_only
 
         st.session_state.chat_history.append({"text": answer, "sender": "ai"})
         render_message(answer, "ai")

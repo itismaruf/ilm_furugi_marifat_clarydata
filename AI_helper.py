@@ -7,8 +7,11 @@ from dotenv import load_dotenv
 load_dotenv()
 api_key = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
 
+if not api_key:
+    raise ValueError("❌ API-ключ не найден. Убедитесь, что он задан в .env или secrets.")
+
 # === История диалога и контекст проекта ===
-INITIAL_SYSTEM_PROMPT = "Ты помощник на русском языке. Отвечай чётко, по делу, кратко при необходимости и точно."
+INITIAL_SYSTEM_PROMPT = "Ты помощник на русском языке. Отвечай чётко, по делу, кратко при необходимости и точно, просто говори как делать то что у тебя просять, не пиши код"
 
 chat_history = [
     {
@@ -88,9 +91,9 @@ def chat_only(message, model="mistralai/devstral-small-2505:free"):
         return f"❌ Ошибка при запросе: {e}"
     
 
-def notify_ai_dataset_structure(df, get_fn=get_chatgpt_response):
+def notify_ai_dataset_and_goal(df, user_desc, get_fn=get_chatgpt_response):
     """
-    Отправляет в ИИ краткую информацию о датасете.
+    Отправляет в ИИ краткую информацию о датасете и, при наличии, цель анализа.
     """
     try:
         # Краткое описание данных
@@ -100,16 +103,25 @@ def notify_ai_dataset_structure(df, get_fn=get_chatgpt_response):
             f"Типы: {', '.join(f'{c} ({str(df[c].dtype)})' for c in df.columns)}."
         )
 
-        # Отправляем ИИ
-        get_fn(f"[DATASET STRUCTURE]\n{info}")
+        # Формируем сообщение для ИИ
+        if user_desc.strip():
+            prompt = f"[DATASET STRUCTURE]\n{info}\n\n[ANALYSIS GOAL]\n{user_desc}"
+            update_context("user_goal", user_desc)
+        else:
+            prompt = f"[DATASET STRUCTURE]\n{info}"
 
-        # Можно сохранить в контекст, если используешь update_context
-        try:
-            update_context("dataset_structure", info)
-        except:
-            pass
+        update_context("dataset_structure", info)
 
-        return "✅ ИИ в успешно подключился."
+        # Отправляем в ИИ
+        with st.spinner(" Отправляем данные в ИИ..."):
+            get_fn(prompt)
+
+        # Сообщение об успехе
+        if user_desc.strip():
+            return f"✅ Учитывая вашу цель, ИИ подключён"
+        else:
+            return "✅ ИИ подключён"
+
     except Exception as e:
         return f"Ошибка при отправке данных в ИИ: {e}"
 
