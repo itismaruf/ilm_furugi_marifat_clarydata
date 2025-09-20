@@ -7,24 +7,27 @@ import io
 from sklearn.model_selection import train_test_split
 
 
-from Utils.upload_utils import *
-from Utils.automatic_data_processing import run_auto_cleaning, summarize_missing, run_auto_cleaning, \
-        drop_rows_na, drop_cols_na, fill_na, render_nan_rules_table, drop_selected_cols, show_na_summary, \
-    remove_duplicates
+from Utils.upload_utils import load_data, get_base_info, show_data_head, show_descriptive_stats, display_base_info
 
-from Utils.outlier_utils import detect_outliers_iqr, detect_outliers_zscore, \
+from Utils.automatic_data_processing import (summarize_missing, render_nan_rules_table, run_auto_cleaning, \
+                                                apply_manual_cleaning, show_na_summary, prepare_csv_download )
+
+from Utils.outlier_utils import (detect_outliers_iqr, detect_outliers_zscore, \
     plot_outliers_distribution, outliers_summary, run_auto_outlier_removal, render_outlier_rules_table, \
-    remove_outliers_iqr, remove_outliers_zscore, cap_outliers, remove_outliers_percentile, plot_outlier_removal_comparison
+    remove_outliers_iqr, remove_outliers_zscore, cap_outliers, remove_outliers_percentile, plot_outlier_removal_comparison)
 
-from Utils.visualization import plot_data_visualizations, suggest_visualization_combinations, plot_correlation_heatmap, generate_pivot_table
+from Utils.visualization import show_chart_tab, show_ai_suggestions, show_correlation_tab, show_pivot_tab
 
-from Utils.stats_tests import *
+from Utils.stats_tests import show_ttest_ui, show_anova_ui, show_chi2_ui
 
-from Utils.modeling_utils import *
+from Utils.modeling_utils import ensure_modeling_state, sticky_selectbox, show_model_settings, \
+                                 prepare_features_and_target, train_logistic_regression, evaluate_model, \
+                                 compute_feature_importance, interpret_feature_importance, mark_model_trained, \
+                                 show_results_and_analysis, show_single_prediction, show_export_buttons
 
-from Utils.chat import *
+from Utils.chat import continue_chat, render_message, reset_chat_history
 
-from AI_helper import *
+from AI_helper import update_context, reset_ai_conversation, get_chatgpt_response, notify_ai_dataset_and_goal
 
 
 # Конфигурация страницы
@@ -302,9 +305,6 @@ if st.session_state.get("page") == "Автообработка данных":
     else:
         df = st.session_state["df"]
 
-        # # ℹ️ Краткая инструкция
-        # render_nan_handling_info()
-
         # 🎯 Выбор целевой переменной
         target = st.selectbox(
             "Целевая переменная (ее NaN будут удалены)",
@@ -321,13 +321,11 @@ if st.session_state.get("page") == "Автообработка данных":
             st.success("Нет пропусков в данных", icon="✅")
         else:
             st.table(
-                missing
-                .rename(columns={
+                missing.rename(columns={
                     "column": "Столбец",
                     "missing_count": "Кол-во",
                     "pct_missing": "% пропусков"
-                })
-                .set_index("Столбец")
+                }).set_index("Столбец")
             )
 
             st.markdown("---")
@@ -340,35 +338,30 @@ if st.session_state.get("page") == "Автообработка данных":
             if st.button("🚀 Запустить автоочистку"):
                 before, log, new_df = run_auto_cleaning(df, target_col=target)
                 st.session_state["df"] = new_df
-                st.session_state["data_changed"] = True  # <-- Фиксируем изменения
+                st.session_state["data_changed"] = True
 
                 if before.empty:
                     st.info("Пропусков не найдено", icon="✅")
                 else:
                     st.markdown("**До очистки**")
                     st.table(
-                        before
-                        .rename(columns={
+                        before.rename(columns={
                             "column": "Столбец",
                             "missing_count": "Кол-во",
                             "pct_missing": "% пропусков"
-                        })
-                        .set_index("Столбец")
+                        }).set_index("Столбец")
                     )
 
                     with st.spinner("Автоочистка..."):
                         time.sleep(1)
 
-                    report = (
-                        pd.DataFrame(log)
-                        .rename(columns={
-                            "column": "Столбец",
-                            "missing_count": "Кол-во",
-                            "pct_missing": "% пропусков",
-                            "action": "Действие"
-                        })
-                        .set_index("Столбец")
-                    )
+                    report = pd.DataFrame(log).rename(columns={
+                        "column": "Столбец",
+                        "missing_count": "Кол-во",
+                        "pct_missing": "% пропусков",
+                        "action": "Действие"
+                    }).set_index("Столбец")
+
                     st.markdown("**Отчет автоочистки**")
                     st.table(report)
 
@@ -380,14 +373,14 @@ if st.session_state.get("page") == "Автообработка данных":
         # 🔧 Ручная очистка
         st.subheader("🔧 Ручная очистка")
         with st.expander("✍️ Панель ручной очистки"):
-            
             cols = st.multiselect(
                 "Столбцы для обработки:",
                 [c for c in df.columns if c != target]
             )
             action = st.radio(
                 "Действие:",
-                ["Удалить строки", "Удалить столбцы (с NaN)", "Заполнить NaN", "Удалить выбранные столбцы", "Удалить дубликаты"]
+                ["Удалить строки", "Удалить столбцы (с NaN)", "Заполнить NaN",
+                 "Удалить выбранные столбцы", "Удалить дубликаты"]
             )
             show_tables = st.checkbox("Показывать сводку по NaN", value=True)
 
@@ -399,20 +392,10 @@ if st.session_state.get("page") == "Автообработка данных":
 
             if st.button("✅ Применить"):
                 before = df.copy()
-
-                if action == "Удалить строки":
-                    new_df = drop_rows_na(df, cols, target)
-                elif action == "Удалить столбцы (с NaN)":
-                    new_df = drop_cols_na(df, cols)
-                elif action == "Удалить выбранные столбцы":
-                    new_df = drop_selected_cols(df, cols)
-                elif action == "Заполнить NaN":
-                    new_df = fill_na(df, cols, method, value)
-                elif action == "Удалить дубликаты":  # 🆕 Новый обработчик
-                    new_df = remove_duplicates(df)
+                new_df = apply_manual_cleaning(df, action, cols, target, method, value)
 
                 st.session_state["df"] = new_df
-                st.session_state["data_changed"] = True  # <-- Фиксируем изменения
+                st.session_state["data_changed"] = True
                 st.success("✅ Обработка завершена")
 
                 if show_tables and action != "Удалить выбранные столбцы":
@@ -423,22 +406,15 @@ if st.session_state.get("page") == "Автообработка данных":
                     col1.write(before.shape)
                     col2.write(new_df.shape)
 
-        # === 📥 Кнопка скачивания, если были изменения ===
+        # 📥 Кнопка скачивания
         if st.session_state.get("data_changed", False) and not st.session_state["df"].empty:
             st.markdown("---")
             st.subheader("📥 Скачать обработанные данные")
 
-            # Получаем имя исходного файла, если оно есть
-            base_name = "data"
-            if "original_filename" in st.session_state:
-                base_name = os.path.splitext(st.session_state["original_filename"])[0]
-
-            file_name = f"{base_name}_cleaned.csv"
-
-            # Готовим CSV в буфере
-            csv_buffer = io.BytesIO()
-            st.session_state["df"].to_csv(csv_buffer, index=False)
-            csv_buffer.seek(0)  # <-- ВАЖНО: сброс указателя в начало
+            file_name, csv_buffer = prepare_csv_download(
+                st.session_state["df"],
+                st.session_state.get("original_filename")
+            )
 
             st.success("✅ Файл готов к скачиванию")
             st.download_button(
@@ -639,175 +615,23 @@ elif st.session_state["page"] == "Визуальный анализ и EDA":
     st.title("📊 Визуальный анализ и EDA")
     st.caption('В этом разделе вы можете сделать визуальный анализ и EDA, подробно в разделе "Руководство пользователя"!')
 
-
     if "df" not in st.session_state:
         st.warning("📥 Сначала загрузите данные.", icon="⚠️")
     else:
         df = st.session_state["df"]
-
-        # === 🔖 Вкладки ===
         tabs = st.tabs(["📈 Графики", "❄️ Корреляции", "📊 Сводные таблицы"])
 
-        # === 📈 Вкладка: Графики ===
         with tabs[0]:
-            st.subheader("🧭 Выбор переменных")
+            show_ai_suggestions(df)
+            show_chart_tab(df)
+            
 
-            # X и Y в одной строке
-            col1, col2 = st.columns(2)
-            with col1:
-                x = st.selectbox(
-                    "🟥 Ось X",
-                    df.columns,
-                    index=st.session_state.get("eda_x_index", 0),
-                    key="eda_x"
-                )
-            with col2:
-                y_options = [""] + list(df.columns)
-                y = st.selectbox(
-                    "🟦 Ось Y (необязательно)",
-                    y_options,
-                    index=st.session_state.get("eda_y_index", 0),
-                    key="eda_y"
-                ) or None
-
-            st.session_state["eda_x_index"] = list(df.columns).index(x)
-            st.session_state["eda_y_index"] = y_options.index(y if y else "")
-
-            if x == y and y is not None:
-                st.warning("Переменные X и Y не должны совпадать.")
-                y = None
-
-            st.markdown("---")
-
-            # === Тип графика ===
-            with st.expander("🎨 Тип графика", expanded=True):
-                chart_options = [
-                    "Автоматически", "Гистограмма", "Круговая диаграмма",
-                    "Точечный график", "Boxplot", "Bar-график", "Лайнплот"
-                ]
-                # убираем лишний отступ — label пустой
-                chart_type = st.selectbox(
-                    label="",
-                    options=chart_options,
-                    index=st.session_state.get("eda_chart_index", 0),
-                    key="eda_chart"
-                )
-                st.session_state["eda_chart_index"] = chart_options.index(chart_type)
-
-                st.caption("Выберите подходящий тип графика, затем нажмите кнопку ниже.")
-                build_chart = st.button("📊 Построить график", key="build_chart")
-
-            # === Советы от ИИ ===
-            with st.expander("💡 Получить советы для визуализации от ИИ"):
-                if st.button("✨ Предложи комбинации", key="suggest_combinations"):
-                    df_info = f"Переменные: {', '.join(df.columns)}"
-                    with st.spinner("Генерируем рекомендации..."):
-                        time.sleep(2)
-                        st.session_state["eda_suggestion"] = suggest_visualization_combinations(df_info)
-
-                if "eda_suggestion" in st.session_state:
-                    st.markdown("**📝 Рекомендации от ИИ:**")
-                    st.info(st.session_state["eda_suggestion"], icon="🤖")
-
-            # Разделитель после советов
-            st.markdown("---")
-
-            # === График с фильтрами ===
-            with st.expander("📈 График с фильтрами", expanded=True):
-                filters = {}
-                cols_to_filter = [x] + ([y] if y else [])
-                for col in dict.fromkeys(cols_to_filter):
-                    if pd.api.types.is_numeric_dtype(df[col]):
-                        lo, hi = float(df[col].min()), float(df[col].max())
-                        if lo != hi:
-                            sel = st.slider(
-                                f"Фильтр по {col}",
-                                min_value=lo,
-                                max_value=hi,
-                                value=st.session_state.get(f"slider_{col}", (lo, hi)),
-                                key=f"slider_{col}"
-                            )
-                            filters[col] = sel
-
-                if build_chart:
-                    with st.spinner("Построение графика..."):
-                        time.sleep(2.5)
-                        fig = plot_data_visualizations(
-                            df=df,
-                            x=x,
-                            y=y,
-                            numeric_filters=filters,
-                            chart_type=chart_type
-                        )
-                    if fig:
-                        st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.info("🎯 Выберите переменные и нажмите «Построить график».")
-
-
-        # === ❄️ Вкладка: Корреляции ===
         with tabs[1]:
-            st.subheader("❄️ Тепловая карта корреляций")
-            fig = plot_correlation_heatmap(df)
-            if fig:
-                st.plotly_chart(fig, use_container_width=True)
-                st.info("💡 Чем ближе значение к 1 или -1, тем сильнее линейная связь между переменными.")
+            show_correlation_tab(df)
 
-                if st.button("📤 Зафиксировать корреляции в ИИ", key="fix_corr"):
-                    _ = send_correlation_to_ai(df)
-                    st.session_state["correlation_saved"] = True
-                    st.success("✅ Корреляции зафиксированы в ИИ.")
-                elif st.session_state.get("correlation_saved"):
-                    st.info("✅ Корреляции уже были зафиксированы.")
-            else:
-                st.info("Невозможно построить тепловую карту.")
-
-        # === 📊 Вкладка: Сводные таблицы ===
         with tabs[2]:
-            st.subheader("📊 Сводные таблицы (Pivot)")
+            show_pivot_tab(df)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                index_col = st.selectbox(
-                    "Группировать по",
-                    df.columns,
-                    index=st.session_state.get("pivot_index_index", 0),
-                    key="pivot_index"
-                )
-                st.session_state["pivot_index_index"] = list(df.columns).index(index_col)
-
-            with col2:
-                num_cols = df.select_dtypes(include='number').columns
-                value_col = st.selectbox(
-                    "Агрегировать",
-                    num_cols,
-                    index=st.session_state.get("pivot_value_index", 0),
-                    key="pivot_value"
-                )
-                st.session_state["pivot_value_index"] = list(num_cols).index(value_col)
-
-            agg_options = ["mean", "sum", "count"]
-            agg_func = st.radio(
-                "Метод агрегации",
-                agg_options,
-                index=st.session_state.get("pivot_agg_index", 0),
-                horizontal=True,
-                key="pivot_agg"
-            )
-            st.session_state["pivot_agg_index"] = agg_options.index(agg_func)
-
-            pivot_table = generate_pivot_table(df, index_col, value_col, agg_func)
-            if pivot_table is not None:
-                st.dataframe(pivot_table, use_container_width=True)
-
-                if st.button("📤 Зафиксировать в ИИ", key="fix_pivot"):
-                    _ = send_pivot_to_ai(pivot_table, index_col, value_col, agg_func)
-                    st.session_state["pivot_saved"] = True
-                    st.success("✅ Сводная таблица зафиксирована в ИИ.")
-                elif st.session_state.get("pivot_saved"):
-                    st.info("✅ Сводная таблица уже была зафиксирована.")
-            else:
-                st.info("Возможно, вы выбрали одни и те же столбцы!")
 
 
 # === Статистические тесты ===
@@ -815,14 +639,12 @@ if st.session_state.get("page") == "Статистические тесты":
     st.title("📊 Статистические тесты")
     st.caption("Проверка гипотез: t‑test, ANOVA и Chi‑square")
 
-    # === 1. Проверка наличия данных ===
     if "df" not in st.session_state or st.session_state.df is None or st.session_state.df.empty:
         st.warning("📥 Сначала загрузите данные.")
         st.stop()
 
     df = st.session_state.df
 
-    # === 2. Подсказка по выбору теста ===
     with st.expander("🧭 Как выбрать тест?", expanded=False):
         st.markdown("""
         - **t‑test** — 2 группы, числовая метрика → сравнение средних  
@@ -830,103 +652,20 @@ if st.session_state.get("page") == "Статистические тесты":
         - **Chi‑square** — 2 категориальных признака → проверка связи между категориями
         """)
 
-    # === 3. Выбор теста ===
     selected_test = st.selectbox(
         "Выберите тест",
         ["t-test", "ANOVA", "Chi-squared"],
         key="stats_test_choice"
     )
 
-    st.markdown("---")  # 🔹 Разделитель между выбором теста и настройками
+    st.markdown("---")
 
-    # ===== T‑TEST =====
     if selected_test == "t-test":
-        # --- Выбор переменных ---
-        num_cols = df.select_dtypes(include=["number"]).columns.tolist()
-        cat_cols_all = df.select_dtypes(exclude=["number"]).columns.tolist()
-
-        if not num_cols:
-            st.info("ℹ️ Нет числовых признаков для t‑test.")
-            st.stop()
-        if not cat_cols_all:
-            st.info("ℹ️ Нет категориальных признаков для t‑test.")
-            st.stop()
-
-        target_col = st.selectbox("Числовой признак (метрика)", num_cols, key="ttest_num")
-        group_col = st.selectbox("Категориальный признак", cat_cols_all, key="ttest_group")
-
-        levels = df[group_col].dropna().unique().tolist()
-        if len(levels) == 2:
-            st.caption(f"Группы: {levels[0]!r} и {levels[1]!r}")
-            paired = st.checkbox("Парный t‑test (paired)", value=False, key="ttest_paired")
-        else:
-            picked_levels = st.multiselect(
-                "Выберите ДВА уровня для сравнения",
-                options=levels, max_selections=2,
-                key="ttest_levels"
-            )
-            paired = st.checkbox("Парный t‑test (paired)", value=False, key="ttest_paired")
-
-        st.markdown("---")  # 🔹 Разделитель перед кнопкой запуска
-
-        # --- Запуск теста ---
-        if st.button("Выполнить t‑test", type="primary"):
-            if len(levels) == 2:
-                run_ttest(df, target_col, group_col, paired)
-            elif len(picked_levels) == 2:
-                df_pair = df[df[group_col].isin(picked_levels)].copy()
-                run_ttest(df_pair, target_col, group_col, paired)
-            else:
-                st.error("❌ Выберите ровно две категории.")
-
-    # ===== ANOVA =====
+        show_ttest_ui(df)
     elif selected_test == "ANOVA":
-        # --- Выбор переменных ---
-        num_cols = df.select_dtypes(include=["number"]).columns.tolist()
-        cat_cols = df.select_dtypes(exclude=["number"]).columns.tolist()
-
-        if not num_cols:
-            st.info("ℹ️ Нет числовых признаков для ANOVA.")
-            st.stop()
-        if not cat_cols:
-            st.info("ℹ️ Нет категориальных признаков для ANOVA.")
-            st.stop()
-
-        target_col = st.selectbox("Числовой признак (метрика)", num_cols, key="anova_num")
-        group_col = st.selectbox("Категориальный признак (3+ группы)", cat_cols, key="anova_group")
-
-        st.markdown("---")  # 🔹 Разделитель перед кнопкой запуска
-
-        # --- Запуск теста ---
-        if st.button("Выполнить ANOVA", type="primary"):
-            run_anova(df, target_col, group_col)
-
-    # ===== CHI‑SQUARED =====
+        show_anova_ui(df)
     else:
-        # --- Выбор переменных ---
-        cat_cols = df.select_dtypes(exclude=["number"]).columns.tolist()
-        if len(cat_cols) < 2:
-            st.info("ℹ️ Для Chi‑square нужно минимум два категориальных признака.")
-            st.stop()
-
-        col1 = st.selectbox("Категориальный признак №1", cat_cols, key="chi_col1")
-        other_cats = [c for c in cat_cols if c != col1] or cat_cols
-        col2 = st.selectbox("Категориальный признак №2", other_cats, key="chi_col2")
-
-        plot_choice = st.radio(
-            "Тип графика",
-            ["Авто", "Heatmap", "Stacked bar", "Clustered bar"],
-            horizontal=True, key="chi_plot"
-        )
-
-        st.markdown("---")  # 🔹 Разделитель перед кнопкой запуска
-
-        # --- Запуск теста ---
-        if st.button("Выполнить Chi‑square", type="primary"):
-            if col1 == col2:
-                st.error("❌ Выберите разные категориальные признаки.")
-            else:
-                run_chi2(df, col1, col2, plot_choice)
+        show_chi2_ui(df)
 
 
 # === Моделирование и предсказание ===
@@ -938,62 +677,46 @@ if st.session_state.get("page") == "Моделирование и предска
         st.warning("📥 Сначала загрузите данные.")
         st.stop()
 
-    df: pd.DataFrame = st.session_state["df"]
-
-    # ====== Липкое состояние страницы ======
+    df = st.session_state["df"]
     ms = ensure_modeling_state(df)
 
-    # ====== Липкий выбор целевой ======
     options = list(df.columns)
-    target_col, target_changed = sticky_selectbox(
-        ns="modeling_state",          # неймспейс состояния
-        key="target",                 # ключ внутри неймспейса
-        label="🎯 Целевая переменная (binary target)",
-        options=options,
-        ui_key="modeling_target_ui"   # уникальный ключ UI
-    )
+    target_col, _ = sticky_selectbox("modeling_state", "target", "🎯 Целевая переменная (binary target)", options, ui_key="modeling_target_ui")
 
-    unique_target = pd.Series(df[target_col].dropna().unique())
-    if len(unique_target) > 2:
-        st.error(f"Целевая переменная должна быть бинарной (найдено уникальных значений: {len(unique_target)})")
+    if len(pd.Series(df[target_col].dropna().unique())) > 2:
+        st.error("Целевая переменная должна быть бинарной")
         st.stop()
 
     feature_cols = [c for c in df.columns if c != target_col]
     if not feature_cols:
-        st.error("Нет признаков для обучения (все поля — это Target).")
+        st.error("Нет признаков для обучения")
         st.stop()
 
-    with st.expander("⚙️ Настройки модели", expanded=False):
-        c1, c2 = st.columns(2)
+    C_value, penalty, max_iter, threshold, test_size, use_class_weight = show_model_settings()
 
-        with c1:
-            C_value = st.number_input("Параметр регуляризации C", 0.01, 100.0, 1.0, 0.01)
-            penalty = st.selectbox("Тип регуляризации", ["l1", "l2"], index=1)
-            max_iter = st.number_input("Макс. итераций", 100, 5000, 1000, 100)
-
-        with c2:
-            threshold = st.slider("Порог классификации", 0.05, 0.95, 0.5, 0.05)
-            test_size = st.slider("Размер тестовой выборки (%)", 10, 50, 20, 5) / 100
-            use_class_weight = st.checkbox("Сбалансировать веса классов", value=False)
-
-    # ====== Обучение модели ======
     if st.button("🚀 Обучить / переобучить модель", use_container_width=True):
         try:
+            # Подготовка данных
             X, y_encoded, le, num_cols, cat_cols = prepare_features_and_target(df, target_col)
             X_train, X_test, y_train, y_test = train_test_split(
                 X, y_encoded, test_size=test_size, random_state=42, stratify=y_encoded
             )
+
+            # Обучение
             class_weight = "balanced" if use_class_weight else None
             model, meta = train_logistic_regression(
-                X_train, y_train, C=C_value, penalty=penalty,
+                X_train, y_train,
+                C=C_value, penalty=penalty,
                 class_weight=class_weight, max_iter=max_iter,
                 label_encoder=le
             )
 
+            # Оценка
             metrics, roc_data, pr_data = evaluate_model(model, X_test, y_test, meta, threshold)
             importance_df = compute_feature_importance(model, meta)
             short_text = interpret_feature_importance(importance_df, top_n=3)
 
+            # Сохраняем в сессию
             st.session_state["modeling"] = {
                 "model": model, "meta": meta,
                 "threshold": threshold, "metrics": metrics,
@@ -1007,145 +730,19 @@ if st.session_state.get("page") == "Моделирование и предска
                 }
             }
 
-            # Сброс флага dirty — модель соответствует текущему таргету
             mark_model_trained()
-
             st.success("✅ Модель обучена и сохранена")
+
         except Exception as e:
             st.error(f"Не удалось обучить модель: {e}")
 
-    # ====== Показ результатов, если модель есть ======
+    # Если модель уже обучена — показываем результаты
     if "modeling" in st.session_state:
         data = st.session_state["modeling"]
 
-        st.subheader("📊 Результаты и анализ")
-        with st.expander("Показать метрики и кривые", expanded=False):
-            m_df = pd.DataFrame({
-                "Метрика": list(data["metrics"].keys()),
-                "Значение": [round(v, 4) for v in data["metrics"].values()]
-            })
-            st.dataframe(m_df, use_container_width=True, hide_index=True)
-            fpr, tpr = data["roc"]
-            precision, recall = data["pr"]
-            c1, c2 = st.columns(2)
-            with c1:
-                st.plotly_chart(make_roc_fig(fpr, tpr), use_container_width=True)
-            with c2:
-                st.plotly_chart(make_pr_fig(precision, recall), use_container_width=True)
-
-        st.subheader("📌 Важность признаков")
-        st.plotly_chart(plot_feature_importance(data["importance_df"]), use_container_width=True)
-        st.info(data["short_text"])
-
-        # 🔍 Прогноз
-        with st.expander("🔍 Прогноз для одного объекта", expanded=False):
-            num_cols, cat_cols = split_features_by_type(df, data["feature_cols"])
-
-            # UI: строим словарь значений
-            user_input = {}
-            cols = st.columns(3) if len(data["feature_cols"]) >= 9 else (st.columns(2) if len(data["feature_cols"]) >= 4 else st.columns(1))
-
-            # Порядок: числовые, затем категориальные
-            all_feats = num_cols + cat_cols
-
-            for i, feat in enumerate(all_feats):
-                with cols[i % len(cols)]:
-                    series = df[feat]
-                    if pd.api.types.is_numeric_dtype(series):
-                        vmin = float(series.min())
-                        vmax = float(series.max())
-                        vdefault = float(series.median())
-                        user_input[feat] = st.number_input(
-                            f"{feat}",
-                            min_value=vmin if np.isfinite(vmin) else None,
-                            max_value=vmax if np.isfinite(vmax) else None,
-                            value=vdefault if np.isfinite(vdefault) else 0.0
-                        )
-                    else:
-                        options = pd.Series(series.dropna().unique()).astype(str).tolist()
-                        options = sorted(options)[:300]  # safety
-                        if not options:
-                            options = ["(пусто)"]
-                        user_input[feat] = st.selectbox(f"{feat}", options, index=0)
-
-            if st.button("Сделать прогноз"):
-                X_input_df, errors = validate_and_prepare_single_input(df, data["feature_cols"], user_input)
-                if errors:
-                    for k, msg in errors.items():
-                        st.warning(f"{k}: {msg}")
-                else:
-                    try:
-                        result = predict_with_explanation(
-                            model=data["model"],
-                            meta=data["meta"],
-                            X_input_df=X_input_df,
-                            threshold=data["threshold"],
-                            top_k=3
-                        )
-                        st.success(f"Предсказанный класс: {result['pred_class']}")
-                        st.write(result["explanation"])
-                    except Exception as e:
-                        st.error(f"Не удалось получить прогноз: {e}")
-
-        # ======================
-        # Экспорт
-        # ======================
-        st.markdown("---")
-
-        with st.expander("📦 Экспорт", expanded=False):
-            cdl1, cdl2, cdl3, cdl4 = st.columns(4)
-
-            with cdl1:
-                try:
-                    model_bytes = serialize_model(data["model"])
-                    st.download_button(
-                        "Скачать модель (.pkl)",
-                        data=model_bytes,
-                        file_name="logreg_model.pkl",
-                        mime="application/octet-stream",
-                        use_container_width=True
-                    )
-                except Exception as e:
-                    st.error(f"Экспорт модели: {e}")
-
-            with cdl2:
-                imp_csv = data["importance_df"].to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    "Скачать важности (CSV)",
-                    data=imp_csv,
-                    file_name="feature_importance.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
-
-            with cdl3:
-                metrics_df = pd.DataFrame([data["metrics"]])
-                metr_csv = metrics_df.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    "Скачать метрики (CSV)",
-                    data=metr_csv,
-                    file_name="metrics.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
-
-            with cdl4:
-                md = generate_markdown_report(
-                    target_col=data["target_col"],
-                    metrics=data["metrics"],
-                    importance_df=data["importance_df"],
-                    threshold=data["threshold"],
-                    model_params=data["params"],
-                    top_n=10
-                )
-                st.download_button(
-                    "Скачать отчёт (MD)",
-                    data=md.encode("utf-8"),
-                    file_name="model_report.md",
-                    mime="text/markdown",
-                    use_container_width=True
-                )
-
+        show_results_and_analysis(data)
+        show_single_prediction(data, df)
+        show_export_buttons(data)
 
 # === Разъяснение результатов (с ИИ) ===
 if st.session_state.get("page") == "Разъяснение результатов (с ИИ)":

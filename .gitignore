@@ -1,0 +1,31 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# VSCode / JetBrains
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Logs, env files
+*.log
+*.sqlite3
+*.env
+.env
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test cache
+.pytest_cache/

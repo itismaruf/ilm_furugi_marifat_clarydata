@@ -1,176 +1,78 @@
-from AI_helper import get_chatgpt_response
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from plotly import graph_objects as go 
-from typing import Any, List, Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict
+from AI_helper import get_chatgpt_response
+import time
 
 
-# ==== Визуализация ====
-def safe_selectbox(
-    label: str,
-    options: List[Any],
-    index: int = 0,
-    default: Any = None,
-    **kwargs
-) -> Any:
-    """
-    Обёртка для st.selectbox:
-    - если options пуст, выводит предупреждение и возвращает default.
-    - если index вне диапазона, подставляет 0.
-    """
-    if not options:
-        st.warning(f"Нет доступных вариантов для «{label}».")
-        return default
-    idx = index if 0 <= index < len(options) else 0
-    return st.selectbox(label, options, index=idx, **kwargs)
-
-
+# eda_ui_blocks.py
+# === Внутренние зависимости ===
 def apply_numeric_filters(
     df: pd.DataFrame,
     numeric_filters: Optional[Dict[str, Tuple[float, float]]]
 ) -> pd.DataFrame:
-    """
-    Фильтрует числовые колонки по диапазонам, заданным пользователем.
-    Пропускает фильтры, если min == max или колонка не числовая.
-    Ошибки не прерывают выполнение.
-    """
+    """Фильтрует числовые колонки по диапазонам."""
     if not numeric_filters:
         return df
-
     try:
         for col, (min_val, max_val) in numeric_filters.items():
-            if col not in df:
-                st.warning(f"Колонка «{col}» не найдена в данных.")
+            if col not in df or not pd.api.types.is_numeric_dtype(df[col]):
                 continue
-
-            if not pd.api.types.is_numeric_dtype(df[col]):
-                st.warning(f"Колонка «{col}» не является числовой.")
-                continue
-
-            if min_val == max_val:
-                st.info(f"Пропущен фильтр по «{col}»: диапазон ({min_val}, {max_val}) не имеет смысла.")
-                continue
-
-            df = df[df[col].between(min_val, max_val)]
-
+            if min_val != max_val:
+                df = df[df[col].between(min_val, max_val)]
     except Exception as e:
-        st.warning(f"Ошибка при применении числовых фильтров: {e}")
-
+        st.warning(f"Ошибка при применении фильтров: {e}")
     return df
 
-
-
-# === Вспомогательная функция для фильтрации топ-N ===
-def filter_top_n(df: pd.DataFrame, col: str, n: int) -> pd.DataFrame:
-    top_values = df[col].value_counts().nlargest(n).index
-    return df[df[col].isin(top_values)]
-
-
-# === Вспомогательная функция для определения временного признака ===
 def is_temporal(column_name: str, series: pd.Series) -> bool:
+    """Определяет, является ли колонка временной."""
     if pd.api.types.is_datetime64_any_dtype(series):
         return True
     keywords = ["date", "time", "year", "month"]
     return any(key in column_name.lower() for key in keywords)
 
-
-# === Улучшенная ручная визуализация ===
+# === Авто- и ручная визуализация ===
 def generate_manual_chart(
     df: pd.DataFrame,
     x: str,
     y: Optional[str] = None,
-    chart_type: str = "Гистограмма",
-    top_n: Optional[int] = None
-) -> Optional[go.Figure]:
+    chart_type: str = "Гистограмма"
+):
+    """Строит график выбранного типа."""
     try:
         if x not in df.columns or (y and y not in df.columns):
-            st.warning("Выбранные столбцы отсутствуют в данных.")
             return None
-
-        if df[x].nunique() == len(df):
-            st.warning("X — уникальный идентификатор, визуализировать бессмысленно.")
-            return None
-
-        if top_n:
-            df = filter_top_n(df, x, top_n)
-            if y and not pd.api.types.is_numeric_dtype(df[y]):
-                df = filter_top_n(df, y, top_n)
-
         x_num = pd.api.types.is_numeric_dtype(df[x])
         y_num = pd.api.types.is_numeric_dtype(df[y]) if y else False
         is_time_x = is_temporal(x, df[x])
 
-        match chart_type:
-            case "Гистограмма":
-                return px.histogram(df, x=x, nbins=30 if x_num else None)
-
-            case "Круговая диаграмма":
-                if df[x].nunique() > 10:
-                    st.warning("Слишком много категорий для круговой диаграммы (>10).")
-                    return None
-                counts = df[x].value_counts().nlargest(top_n) if top_n else df[x].value_counts()
-                return px.pie(names=counts.index, values=counts.values)
-
-            case "Точечный график":
-                if not y:
-                    st.warning("Укажите Y для точечного графика.")
-                    return None
-                return px.scatter(df, x=x, y=y, color=(y if not y_num else None))
-
-            case "Boxplot":
-                if not y:
-                    st.warning("Укажите Y для boxplot.")
-                    return None
-                return px.box(df, x=x, y=y, color=(x if not x_num else None))
-
-            case "Bar-график":
-                if not y:
-                    st.warning("Укажите Y для bar-графика.")
-                    return None
-                return px.bar(df, x=x, y=y, color=(x if not x_num else None))
-
-            case "Лайнплот":
-                if not is_time_x:
-                    st.warning("Лайнплот применяется только к временным данным.")
-                    return None
-                if not y:
-                    st.warning("Укажите Y для лайнплота.")
-                    return None
-                return px.line(df, x=x, y=y)
-
-            case _:
-                st.warning(f"Неизвестный тип графика: {chart_type}")
-                return None
-
+        if chart_type == "Гистограмма":
+            return px.histogram(df, x=x, nbins=30 if x_num else None)
+        elif chart_type == "Круговая диаграмма":
+            counts = df[x].value_counts()
+            return px.pie(names=counts.index, values=counts.values)
+        elif chart_type == "Точечный график" and y:
+            return px.scatter(df, x=x, y=y)
+        elif chart_type == "Boxplot" and y:
+            return px.box(df, x=x, y=y)
+        elif chart_type == "Bar-график" and y:
+            return px.bar(df, x=x, y=y)
+        elif chart_type == "Лайнплот" and y and is_time_x:
+            return px.line(df, x=x, y=y)
     except Exception as e:
-        st.warning(f"Невозможно построить график «{chart_type}»: {e}")
-        return None
-    
+        st.warning(f"Ошибка при построении графика: {e}")
+    return None
 
-
-# === Улучшенная авто-визуализация ===
 def generate_auto_chart(
     df: pd.DataFrame,
     x: str,
-    y: Optional[str] = None,
-    top_n: Optional[int] = None
-) -> Optional[go.Figure]:
+    y: Optional[str] = None
+):
+    """Автоматически подбирает тип графика."""
     try:
         if x not in df.columns or (y and y not in df.columns):
-            st.warning("Выбранные столбцы отсутствуют в данных.")
             return None
-
-        if df[x].nunique() == len(df):
-            st.warning("X — уникальный идентификатор, визуализировать бессмысленно.")
-            return None
-
-        if top_n:
-            df = filter_top_n(df, x, top_n)
-            if y and not pd.api.types.is_numeric_dtype(df[y]):
-                df = filter_top_n(df, y, top_n)
-
         x_num = pd.api.types.is_numeric_dtype(df[x])
         y_num = pd.api.types.is_numeric_dtype(df[y]) if y else False
         is_time_x = is_temporal(x, df[x])
@@ -178,123 +80,282 @@ def generate_auto_chart(
         if y:
             if x_num and y_num:
                 return px.line(df, x=x, y=y) if is_time_x else px.scatter(df, x=x, y=y)
-
             if not x_num and y_num:
-                if df[x].nunique() <= 5:
-                    agg = df.groupby(x)[y].mean().reset_index()
-                    return px.bar(agg, x=x, y=y)
-                else:
-                    return px.box(df, x=x, y=y)
-
+                return px.bar(df.groupby(x)[y].mean().reset_index(), x=x, y=y)
             if not x_num and not y_num:
                 return px.histogram(df, x=x, color=y, barmode="group")
-
             return px.bar(df, x=x, y=y)
-
         else:
             if x_num:
                 return px.histogram(df, x=x)
-            if df[x].nunique() <= 10:
-                counts = df[x].value_counts()
-                return px.pie(names=counts.index, values=counts.values)
-            return px.histogram(df, x=x)
-
+            counts = df[x].value_counts()
+            return px.pie(names=counts.index, values=counts.values)
     except Exception as e:
-        st.warning(f"Невозможно построить автоматическую визуализацию: {e}")
+        st.warning(f"Ошибка авто-визуализации: {e}")
+    return None
+
+def plot_data_visualizations(df, x, y=None, numeric_filters=None, chart_type="Автоматически"):
+    if x not in df.columns or (y and y not in df.columns) or (x == y and y is not None):
+        st.warning("Некорректный выбор переменных.")
         return None
-    
-
-
-# === Обёртка для отображения графика с фильтрами и обработкой ошибок ===
-def plot_data_visualizations(
-    df: pd.DataFrame,
-    x: str,
-    y: Optional[str] = None,
-    top_n: Optional[int] = None,
-    numeric_filters: Optional[Dict[str, Tuple[float, float]]] = None,
-    chart_type: str = "Автоматически"
-) -> None:
-    if x not in df.columns:
-        st.warning("Не выбрана переменная X или она отсутствует в данных.")
-        return
-    if y and y not in df.columns:
-        st.warning("Переменная Y отсутствует в данных.")
-        return
-    if x == y:
-        st.warning("Переменные X и Y не должны совпадать.")
-        return
 
     df_filtered = apply_numeric_filters(df, numeric_filters or {})
-    fig = (
-        generate_auto_chart(df_filtered, x, y, top_n)
-        if chart_type == "Автоматически"
-        else generate_manual_chart(df_filtered, x, y, chart_type, top_n)
-    )
+
+    if df_filtered.empty:
+        st.info("После фильтрации данных не осталось.")
+        return None
+
+    fig = None
+    if chart_type == "Автоматически":
+        fig = generate_auto_chart(df_filtered, x, y)
+    else:
+        fig = generate_manual_chart(df_filtered, x, y, chart_type)
 
     if fig is None:
-        st.info("Визуализация недоступна для выбранных параметров.")
-    else:
-        st.plotly_chart(fig, use_container_width=True)
+        st.info("Выбранный тип графика не подходит для этих данных. Попробуйте другой.")
+    return fig
 
 
-
+# === Рекомендации от ИИ ===
 def suggest_visualization_combinations(df_info: str) -> str:
+    """Запрашивает у ИИ рекомендации по визуализациям."""
     try:
         prompt = (
-            "Предложи 2–3 интересные комбинации для визуализации (X и Y), и коротко скажи почему,"
-            "чтобы выявить закономерности. Кратко, по одной на строку." \
-            "Пример: X - ... а Y - ..."
+            "Предложи 2–3 интересные комбинации для визуализации (X и Y) "
+            "и коротко поясни, что можно увидеть."
         )
         return get_chatgpt_response(prompt)
     except Exception as e:
         return f"Не удалось получить рекомендации: {e}"
-    
 
-# ==== Корреляции ====
+# === Корреляции ===
 def plot_correlation_heatmap(df: pd.DataFrame):
-    """
-    Строит тепловую карту корреляций для числовых переменных.
-    """
+    """Строит тепловую карту корреляций."""
     numeric_df = df.select_dtypes(include='number')
     if numeric_df.shape[1] < 2:
-        st.warning("Недостаточно числовых переменных для корреляционного анализа.")
         return None
-
     corr = numeric_df.corr().round(2)
-    fig = px.imshow(
+    return px.imshow(
         corr,
         text_auto=True,
         color_continuous_scale='RdBu_r',
         title="🔗 Тепловая карта корреляций"
     )
-    return fig
 
-# ==== Pivot ====
+# === Pivot ===
 def generate_pivot_table(df: pd.DataFrame, index_col: str, value_col: str, agg_func: str = "mean"):
-    """
-    Строит сводную таблицу по index_col с агрегированием value_col.
-    Поддерживает mean, sum, count.
-    """
+    """Строит сводную таблицу по index_col с агрегированием value_col."""
     if index_col not in df.columns or value_col not in df.columns:
-        st.warning("Выберите корректные переменные для сводной таблицы.")
         return None
 
-    # Группируем и агрегистрируем данные в зависимости от функции агрегации
+    if agg_func not in {"mean", "sum", "count"}:
+        return None
+
+    # Группировка с as_index=False, чтобы index_col остался колонкой
+    grouped = df.groupby(index_col, as_index=False)[value_col]
+
     if agg_func == "mean":
-        pivot = df.groupby(index_col, as_index=False)[value_col].mean()
+        pivot = grouped.mean()
     elif agg_func == "sum":
-        pivot = df.groupby(index_col, as_index=False)[value_col].sum()
+        pivot = grouped.sum()
     elif agg_func == "count":
-        pivot = df.groupby(index_col, as_index=False)[value_col].count()
-    else:
-        st.warning("Неизвестная агрегирующая функция.")
-        return None
+        pivot = grouped.count()
 
-    # Проверка, есть ли два столбца после группировки
-    if len(pivot.columns) == 2:  # Убедимся, что есть индекс и результат агрегации
+    # Проверяем, что в результате действительно 2 колонки
+    if pivot.shape[1] == 2:
         pivot.columns = [index_col, f"{agg_func}({value_col})"]
+        return pivot
     else:
-        st.warning(f"Не удалось создать сводную таблицу с выбранными параметрами.")
-        return None
+        # Если что-то пошло не так — возвращаем как есть, без переименования
+        return pivot
+    
 
-    return pivot
+
+# Интеграция с ИИ (ожидается, что эти функции уже есть в проекте)
+from AI_helper import send_correlation_to_ai, send_pivot_to_ai
+
+
+def show_chart_tab(df: pd.DataFrame) -> None:
+    """Вкладка: выбор переменных, тип графика, фильтры и построение графика."""
+    st.subheader("🧭 Выбор переменных")
+
+    # X и Y в одной строке
+    col1, col2 = st.columns(2)
+    with col1:
+        x = st.selectbox(
+            "🟥 Ось X",
+            df.columns,
+            index=st.session_state.get("eda_x_index", 0),
+            key="eda_x",
+        )
+    with col2:
+        y_options = [""] + list(df.columns)
+        y = (
+            st.selectbox(
+                "🟦 Ось Y (необязательно)",
+                y_options,
+                index=st.session_state.get("eda_y_index", 0),
+                key="eda_y",
+            )
+            or None
+        )
+
+    # Синхронизируем индексы выбора в session_state
+    st.session_state["eda_x_index"] = list(df.columns).index(x)
+    st.session_state["eda_y_index"] = y_options.index(y if y else "")
+
+    # Защита от совпадения X и Y
+    if x == y and y is not None:
+        st.warning("Переменные X и Y не должны совпадать.")
+        y = None
+
+    st.markdown("---")
+
+    # Тип графика (вынесено в экспандер — как у тебя)
+    with st.expander("🎨 Тип графика", expanded=True):
+        chart_options = [
+            "Автоматически",
+            "Гистограмма",
+            "Круговая диаграмма",
+            "Точечный график",
+            "Boxplot",
+            "Bar-график",
+            "Лайнплот",
+        ]
+        chart_type = st.selectbox(
+            label="",
+            options=chart_options,
+            index=st.session_state.get("eda_chart_index", 0),
+            key="eda_chart",
+        )
+        st.session_state["eda_chart_index"] = chart_options.index(chart_type)
+
+        st.caption("Выберите подходящий тип графика, затем нажмите кнопку ниже.")
+        build_chart = st.button("📊 Построить график", key="build_chart")
+
+    # Разделитель после настроек графика
+    st.markdown("---")
+
+    # График с фильтрами
+    with st.expander("📈 График с фильтрами", expanded=True):
+        filters = {}
+        cols_to_filter = [x] + ([y] if y else [])
+        # dict.fromkeys — удерживает порядок и убирает дубли, если X==Y
+        for col in dict.fromkeys(cols_to_filter):
+            if col and pd.api.types.is_numeric_dtype(df[col]):
+                lo, hi = float(df[col].min()), float(df[col].max())
+                if lo != hi:
+                    sel = st.slider(
+                        f"Фильтр по {col}",
+                        min_value=lo,
+                        max_value=hi,
+                        value=st.session_state.get(f"slider_{col}", (lo, hi)),
+                        key=f"slider_{col}",
+                    )
+                    filters[col] = sel
+
+        if build_chart:
+            with st.spinner("Построение графика..."):
+                time.sleep(2.5)  # как у тебя — имитация работы
+                fig = plot_data_visualizations(
+                    df=df,
+                    x=x,
+                    y=y,
+                    numeric_filters=filters,
+                    chart_type=chart_type,
+                )
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Визуализация недоступна для выбранных параметров.")
+        else:
+            st.info("🎯 Выберите переменные и нажмите «Построить график».")
+            
+
+def show_ai_suggestions(df: pd.DataFrame) -> None:
+    """Блок с советами от ИИ по визуализациям (вынесен отдельно)."""
+    with st.expander("💡 Получить советы для визуализации от ИИ"):
+        if st.button("✨ Предложи комбинации", key="suggest_combinations"):
+            df_info = f"Переменные: {', '.join(df.columns)}"
+            with st.spinner("Генерируем рекомендации..."):
+                time.sleep(2)
+                st.session_state["eda_suggestion"] = suggest_visualization_combinations(df_info)
+
+        if "eda_suggestion" in st.session_state:
+            st.markdown("**📝 Рекомендации от ИИ:**")
+            st.info(st.session_state["eda_suggestion"], icon="🤖")
+
+
+def show_correlation_tab(df: pd.DataFrame) -> None:
+    """Вкладка: тепловая карта корреляций и фиксация в ИИ."""
+    st.subheader("❄️ Тепловая карта корреляций")
+    fig = plot_correlation_heatmap(df)
+    if fig:
+        st.plotly_chart(fig, use_container_width=True)
+        st.info("💡 Чем ближе значение к 1 или -1, тем сильнее линейная связь между переменными.")
+
+        if st.button("📤 Зафиксировать корреляции в ИИ", key="fix_corr"):
+            try:
+                _ = send_correlation_to_ai(df)
+                st.session_state["correlation_saved"] = True
+                st.success("✅ Корреляции зафиксированы в ИИ.")
+            except Exception as e:
+                st.error(f"Не удалось отправить корреляции в ИИ: {e}")
+        elif st.session_state.get("correlation_saved"):
+            st.info("✅ Корреляции уже были зафиксированы.")
+    else:
+        st.info("Невозможно построить тепловую карту.")
+
+
+def show_pivot_tab(df: pd.DataFrame) -> None:
+    """Вкладка: сводные таблицы (pivot) и фиксация результата в ИИ."""
+    st.subheader("📊 Сводные таблицы (Pivot)")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        index_col = st.selectbox(
+            "Группировать по",
+            df.columns,
+            index=st.session_state.get("pivot_index_index", 0),
+            key="pivot_index",
+        )
+        st.session_state["pivot_index_index"] = list(df.columns).index(index_col)
+
+    with col2:
+        num_cols = df.select_dtypes(include="number").columns
+        if len(num_cols) == 0:
+            st.warning("Нет числовых столбцов для агрегации.")
+            return
+        value_col = st.selectbox(
+            "Агрегировать",
+            num_cols,
+            index=st.session_state.get("pivot_value_index", 0),
+            key="pivot_value",
+        )
+        st.session_state["pivot_value_index"] = list(num_cols).index(value_col)
+
+    agg_options = ["mean", "sum", "count"]
+    agg_func = st.radio(
+        "Метод агрегации",
+        agg_options,
+        index=st.session_state.get("pivot_agg_index", 0),
+        horizontal=True,
+        key="pivot_agg",
+    )
+    st.session_state["pivot_agg_index"] = agg_options.index(agg_func)
+
+    pivot_table = generate_pivot_table(df, index_col, value_col, agg_func)
+    if pivot_table is not None:
+        st.dataframe(pivot_table, use_container_width=True)
+
+        if st.button("📤 Зафиксировать в ИИ", key="fix_pivot"):
+            try:
+                _ = send_pivot_to_ai(pivot_table, index_col, value_col, agg_func)
+                st.session_state["pivot_saved"] = True
+                st.success("✅ Сводная таблица зафиксирована в ИИ.")
+            except Exception as e:
+                st.error(f"Не удалось отправить сводную таблицу в ИИ: {e}")
+        elif st.session_state.get("pivot_saved"):
+            st.info("✅ Сводная таблица уже была зафиксирована.")
+    else:
+        st.info("Возможно, вы выбрали одни и те же столбцы!")
