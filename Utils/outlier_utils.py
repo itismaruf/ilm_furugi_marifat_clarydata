@@ -4,6 +4,7 @@ import plotly.express as px
 import streamlit as st
 import plotly.graph_objects as go
 from typing import Dict, List
+from scipy.stats import skew
 
 import streamlit as st
 
@@ -198,9 +199,11 @@ def outliers_summary(df: pd.DataFrame, masks: dict) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-def run_auto_outlier_removal(df: pd.DataFrame):
+def run_auto_outlier_removal(df: pd.DataFrame, z_thresh: float = 3.0):
     """
-    Автоматически удаляет выбросы методом IQR (q_low=0.25, q_high=0.75).
+    Автоматически удаляет выбросы:
+      - Если распределение числового признака ~нормальное (|skew| < 1) → Z-score
+      - Иначе → IQR
     Возвращает:
       before_df  — DataFrame с количеством выбросов до очистки,
       log        — список словарей {"column", "method", "removed_count"},
@@ -212,19 +215,47 @@ def run_auto_outlier_removal(df: pd.DataFrame):
     cleaned = df.copy()
 
     for col in numeric_cols:
-        masks = detect_outliers_iqr(df, [col], q_low=0.25, q_high=0.75)
-        removed = int(masks[col].sum())
-        if removed > 0:
-            before.append({"column": col, "removed_count": removed})
-            log.append({
-                "column": col,
-                "method": "IQR",
-                "removed_count": removed
-            })
-            cleaned = cleaned[~masks[col]]
+        s = df[col].dropna()
+        if s.empty:
+            continue
+
+        try:
+            # Определяем распределение
+            skewness = skew(s)
+            if abs(skewness) < 1:
+                method = "Z-score"
+            else:
+                method = "IQR"
+
+            if method == "IQR":
+                masks = detect_outliers_iqr(df, [col], q_low=0.25, q_high=0.75)
+                removed = int(masks[col].sum())
+                if removed > 0:
+                    before.append({"column": col, "removed_count": removed})
+                    log.append({"column": col, "method": "IQR", "removed_count": removed})
+                    cleaned = cleaned[~masks[col]]
+
+            elif method == "Z-score":
+                mu = s.mean()
+                sigma = s.std()
+                if sigma == 0 or np.isnan(sigma):
+                    log.append({"column": col, "method": "Z-score", "removed_count": 0, "note": "std=0"})
+                    continue
+
+                z = (df[col] - mu) / sigma
+                mask = z.abs() > z_thresh
+                removed = int(mask.sum())
+                if removed > 0:
+                    before.append({"column": col, "removed_count": removed})
+                    log.append({"column": col, "method": "Z-score", "removed_count": removed})
+                    cleaned = cleaned[~mask]
+
+        except Exception as e:
+            log.append({"column": col, "method": "auto", "error": str(e)})
 
     before_df = pd.DataFrame(before)
     return before_df, log, cleaned
+
 
 
 def render_outlier_rules_table():

@@ -69,9 +69,8 @@ def get_chatgpt_response(prompt, model="mistralai/devstral-small-2505:free"):
     except Exception as e:
         return f"❌ Ошибка при запросе: {e}"
 
-# === Чат без автоконтекста (раздел "Чат") ===
-def chat_only(message, model="mistralai/devstral-small-2505:free"):
-    """Отправка сообщения в ИИ без контекста проекта, но с сохранением истории."""
+def chat_with_context(message, model="mistralai/devstral-small-2505:free"):
+    """Общение с ИИ с учётом сохранённого контекста (после подключения)."""
     if not message or not isinstance(message, str):
         return "❌ Пустой или некорректный запрос."
 
@@ -92,42 +91,78 @@ def chat_only(message, model="mistralai/devstral-small-2505:free"):
         return f"❌ Пустой ответ от API: {data}"
     except Exception as e:
         return f"❌ Ошибка при запросе: {e}"
+
     
 
 def notify_ai_dataset_and_goal(df, user_desc, get_fn=get_chatgpt_response):
     """
-    Отправляет в ИИ краткую информацию о датасете и, при наличии, цель анализа.
+    Отправляет в ИИ расширенную информацию о датасете и, при наличии, цель анализа.
     """
     try:
-        # Краткое описание данных
-        info = (
-            f"Датасет: {df.shape[0]} строк, {df.shape[1]} столбцов. "
-            f"Колонки: {', '.join(df.columns)}. "
-            f"Типы: {', '.join(f'{c} ({str(df[c].dtype)})' for c in df.columns)}."
-        )
+        # === Базовая информация ===
+        info = [f"Размер: {df.shape[0]} строк, {df.shape[1]} столбцов"]
 
-        # Формируем сообщение для ИИ
+        # === Подробности по колонкам ===
+        col_details = []
+        for col in df.columns:
+            dtype = str(df[col].dtype)
+            missing = df[col].isna().sum()
+            missing_pct = round(missing / len(df) * 100, 2)
+
+            if df[col].dtype in ["int64", "float64"]:
+                desc = df[col].describe()
+                detail = (
+                    f"{col} ({dtype}) → min={desc['min']}, max={desc['max']}, "
+                    f"mean={round(desc['mean'],2)}, std={round(desc['std'],2)}, "
+                    f"пропуски={missing} ({missing_pct}%)"
+                )
+            elif df[col].dtype == "object" or df[col].dtype.name == "category":
+                uniques = df[col].nunique()
+                examples = df[col].dropna().unique()[:3]
+                detail = (
+                    f"{col} ({dtype}) → {uniques} уникальных значений "
+                    f"(примеры: {', '.join(map(str, examples))}), "
+                    f"пропуски={missing} ({missing_pct}%)"
+                )
+            elif "datetime" in dtype:
+                min_date, max_date = df[col].min(), df[col].max()
+                detail = (
+                    f"{col} ({dtype}) → диапазон дат: {min_date} — {max_date}, "
+                    f"пропуски={missing} ({missing_pct}%)"
+                )
+            else:
+                detail = f"{col} ({dtype}) → пропуски={missing} ({missing_pct}%)"
+
+            col_details.append(detail)
+
+        info.append("Колонки:\n- " + "\n- ".join(col_details))
+
+        # === Примеры строк (первые 2) ===
+        sample_rows = df.head(2).to_dict(orient="records")
+        info.append(f"Примеры строк: {sample_rows}")
+
+        # === Формируем сообщение для ИИ ===
+        dataset_info = "\n".join(info)
         if user_desc.strip():
-            prompt = f"[DATASET STRUCTURE]\n{info}\n\n[ANALYSIS GOAL]\n{user_desc}"
+            prompt = f"[DATASET STRUCTURE]\n{dataset_info}\n\n[ANALYSIS GOAL]\n{user_desc}"
             update_context("user_goal", user_desc)
         else:
-            prompt = f"[DATASET STRUCTURE]\n{info}"
+            prompt = f"[DATASET STRUCTURE]\n{dataset_info}"
 
-        update_context("dataset_structure", info)
+        update_context("dataset_structure", dataset_info)
 
-        # Отправляем в ИИ
-        with st.spinner(" Отправляем данные в ИИ..."):
+        # === Отправляем в ИИ ===
+        with st.spinner("📡 Отправляем данные в ИИ..."):
             get_fn(prompt)
 
-        # Сообщение об успехе
+        # === Сообщение об успехе ===
         if user_desc.strip():
-            return f"✅ Учитывая вашу цель, ИИ подключён"
+            return "✅ Учитывая вашу цель, ИИ подключён"
         else:
             return "✅ ИИ подключён"
 
     except Exception as e:
-        return f"Ошибка при отправке данных в ИИ: {e}"
-
+        return f"❌ Ошибка при отправке данных в ИИ: {e}"
 
 
 # === Отправка корреляций ===
@@ -142,7 +177,7 @@ def send_correlation_to_ai(df):
 
     formatted_corr = "\n".join([f"{a} и {b}: корреляция {v:.2f}" for (a, b), v in top_corr.items()])
     prompt = f"Топ-10 корреляций между переменными:\n{formatted_corr}"
-    return get_chatgpt_response(prompt)
+    return chat_with_context(prompt)
 
 # === Отправка сводной таблицы ===
 def send_pivot_to_ai(pivot_df, index_col, value_col, agg_func):
@@ -153,6 +188,6 @@ def send_pivot_to_ai(pivot_df, index_col, value_col, agg_func):
         top_rows = pivot_df.head(10).to_dict(orient="records")
         formatted = "\n".join(map(str, top_rows))
         prompt = f"Сводная таблица по {index_col}, агрегируя {value_col} методом {agg_func}:\n{formatted}"
-        return get_chatgpt_response(prompt)
+        return chat_with_context(prompt)
     except Exception as e:
         return f"❌ Ошибка при отправке сводной таблицы: {e}"

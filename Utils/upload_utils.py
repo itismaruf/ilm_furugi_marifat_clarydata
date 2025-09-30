@@ -1,7 +1,6 @@
 import pandas as pd
 import streamlit as st
 import re
-from AI_helper import update_context
 
 def looks_like_number(s: str) -> bool:
     s = s.strip().replace(",", ".")

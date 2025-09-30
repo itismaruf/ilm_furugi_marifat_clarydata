@@ -1,13 +1,13 @@
-from AI_helper import get_chatgpt_response
 import streamlit as st
 
+from AI_helper import chat_with_context
+
 def continue_chat(user_message):
-    """Обрабатывает любое сообщение от пользователя с учетом контекста проекта."""
+    """Обрабатывает сообщение пользователя с учётом контекста проекта."""
     if not user_message or not isinstance(user_message, str):
         return "❌ Пустой или некорректный запрос."
 
-    prompt = user_message.strip() + "\nОтветь четко, с учетом контекста проекта и целей пользователя."
-    return get_chatgpt_response(prompt)
+    return chat_with_context(user_message.strip())
 
 
 def render_message(text: str, sender: str):
