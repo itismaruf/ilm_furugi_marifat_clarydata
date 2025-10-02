@@ -215,40 +215,35 @@ def run_auto_outlier_removal(df: pd.DataFrame, z_thresh: float = 3.0):
     cleaned = df.copy()
 
     for col in numeric_cols:
-        s = df[col].dropna()
+        s = cleaned[col].dropna()
         if s.empty:
             continue
 
         try:
-            # Определяем распределение
             skewness = skew(s)
-            if abs(skewness) < 1:
-                method = "Z-score"
-            else:
-                method = "IQR"
+            method = "Z-score" if abs(skewness) < 1 else "IQR"
 
             if method == "IQR":
-                masks = detect_outliers_iqr(df, [col], q_low=0.25, q_high=0.75)
+                masks = detect_outliers_iqr(cleaned, [col], q_low=0.25, q_high=0.75)
                 removed = int(masks[col].sum())
                 if removed > 0:
                     before.append({"column": col, "removed_count": removed})
                     log.append({"column": col, "method": "IQR", "removed_count": removed})
-                    cleaned = cleaned[~masks[col]]
+                    cleaned = cleaned.loc[~masks[col]]
 
             elif method == "Z-score":
-                mu = s.mean()
-                sigma = s.std()
-                if sigma == 0 or np.isnan(sigma):
+                mu, sigma = s.mean(), s.std()
+                if sigma == 0 or pd.isna(sigma):
                     log.append({"column": col, "method": "Z-score", "removed_count": 0, "note": "std=0"})
                     continue
 
-                z = (df[col] - mu) / sigma
+                z = (cleaned[col] - mu) / sigma
                 mask = z.abs() > z_thresh
                 removed = int(mask.sum())
                 if removed > 0:
                     before.append({"column": col, "removed_count": removed})
                     log.append({"column": col, "method": "Z-score", "removed_count": removed})
-                    cleaned = cleaned[~mask]
+                    cleaned = cleaned.loc[~mask]
 
         except Exception as e:
             log.append({"column": col, "method": "auto", "error": str(e)})

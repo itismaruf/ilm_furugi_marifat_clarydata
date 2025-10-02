@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from typing import Optional, Tuple, Dict
-from AI_helper import get_chatgpt_response
+from AI_helper import chat_with_context
 import time
 
 
@@ -124,7 +124,7 @@ def suggest_visualization_combinations(df_info: str) -> str:
             "Предложи 2–3 интересные комбинации для визуализации (X и Y) "
             "и коротко поясни, что можно увидеть."
         )
-        return get_chatgpt_response(prompt)
+        return chat_with_context(prompt)
     except Exception as e:
         return f"Не удалось получить рекомендации: {e}"
 
@@ -189,20 +189,20 @@ def show_chart_tab(df: pd.DataFrame) -> None:
             key="eda_x",
         )
     with col2:
-        y_options = [""] + list(df.columns)
-        y = (
-            st.selectbox(
-                "🟦 Ось Y (необязательно)",
-                y_options,
-                index=st.session_state.get("eda_y_index", 0),
-                key="eda_y",
-            )
-            or None
+        y_options = ["— не выбрано —"] + list(df.columns)
+        y = st.selectbox(
+            "🟦 Ось Y (необязательно)",
+            y_options,
+            index=st.session_state.get("eda_y_index", 0),
+            key="eda_y",
         )
+        # Преобразуем выбор в None, если выбрано "— не выбрано —"
+        if y == "— не выбрано —":
+            y = None
 
     # Синхронизируем индексы выбора в session_state
     st.session_state["eda_x_index"] = list(df.columns).index(x)
-    st.session_state["eda_y_index"] = y_options.index(y if y else "")
+    st.session_state["eda_y_index"] = y_options.index(y if y is not None else "— не выбрано —")
 
     # Защита от совпадения X и Y
     if x == y and y is not None:
@@ -211,7 +211,7 @@ def show_chart_tab(df: pd.DataFrame) -> None:
 
     st.markdown("---")
 
-    # Тип графика (вынесено в экспандер — как у тебя)
+    # Тип графика (вынесено в экспандер)
     with st.expander("🎨 Тип графика", expanded=True):
         chart_options = [
             "Автоматически",
@@ -223,7 +223,7 @@ def show_chart_tab(df: pd.DataFrame) -> None:
             "Лайнплот",
         ]
         chart_type = st.selectbox(
-            label="",
+            "📊 Тип графика",   # <-- больше не пустой label
             options=chart_options,
             index=st.session_state.get("eda_chart_index", 0),
             key="eda_chart",
@@ -233,14 +233,12 @@ def show_chart_tab(df: pd.DataFrame) -> None:
         st.caption("Выберите подходящий тип графика, затем нажмите кнопку ниже.")
         build_chart = st.button("📊 Построить график", key="build_chart")
 
-    # Разделитель после настроек графика
     st.markdown("---")
 
     # График с фильтрами
     with st.expander("📈 График с фильтрами", expanded=True):
         filters = {}
         cols_to_filter = [x] + ([y] if y else [])
-        # dict.fromkeys — удерживает порядок и убирает дубли, если X==Y
         for col in dict.fromkeys(cols_to_filter):
             if col and pd.api.types.is_numeric_dtype(df[col]):
                 lo, hi = float(df[col].min()), float(df[col].max())
@@ -256,7 +254,7 @@ def show_chart_tab(df: pd.DataFrame) -> None:
 
         if build_chart:
             with st.spinner("Построение графика..."):
-                time.sleep(2.5)  # как у тебя — имитация работы
+                time.sleep(2.5)  # имитация работы
                 fig = plot_data_visualizations(
                     df=df,
                     x=x,
@@ -269,8 +267,7 @@ def show_chart_tab(df: pd.DataFrame) -> None:
             else:
                 st.info("Визуализация недоступна для выбранных параметров.")
         else:
-            st.info("🎯 Выберите переменные и нажмите «Построить график».")
-            
+            st.info("🎯 Выберите переменные и нажмите «Построить график».")            
 
 def show_ai_suggestions(df: pd.DataFrame) -> None:
     """Блок с советами от ИИ по визуализациям (вынесен отдельно)."""
