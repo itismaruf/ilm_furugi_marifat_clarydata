@@ -151,7 +151,6 @@ def generate_pivot_table(df: pd.DataFrame, index_col: str, value_col: str, agg_f
     if agg_func not in {"mean", "sum", "count"}:
         return None
 
-    # Группировка с as_index=False, чтобы index_col остался колонкой
     grouped = df.groupby(index_col, as_index=False)[value_col]
 
     if agg_func == "mean":
@@ -161,12 +160,13 @@ def generate_pivot_table(df: pd.DataFrame, index_col: str, value_col: str, agg_f
     elif agg_func == "count":
         pivot = grouped.count()
 
-    # Проверяем, что в результате действительно 2 колонки
     if pivot.shape[1] == 2:
-        pivot.columns = [index_col, f"{agg_func}({value_col})"]
+        agg_col_name = f"{agg_func}({value_col})"
+        pivot.columns = [index_col, agg_col_name]
+        # 🔽 сортировка по убыванию
+        pivot = pivot.sort_values(by=agg_col_name, ascending=False).reset_index(drop=True)
         return pivot
     else:
-        # Если что-то пошло не так — возвращаем как есть, без переименования
         return pivot
     
 
@@ -223,14 +223,12 @@ def show_chart_tab(df: pd.DataFrame) -> None:
             "Лайнплот",
         ]
         chart_type = st.selectbox(
-            "📊 Тип графика",   # <-- больше не пустой label
+            "Выберите подходящий тип графика",
             options=chart_options,
             index=st.session_state.get("eda_chart_index", 0),
             key="eda_chart",
         )
         st.session_state["eda_chart_index"] = chart_options.index(chart_type)
-
-        st.caption("Выберите подходящий тип графика, затем нажмите кнопку ниже.")
         build_chart = st.button("📊 Построить график", key="build_chart")
 
     st.markdown("---")
@@ -291,6 +289,7 @@ def show_correlation_tab(df: pd.DataFrame) -> None:
         st.plotly_chart(fig, use_container_width=True)
         st.info("💡 Чем ближе значение к 1 или -1, тем сильнее линейная связь между переменными.")
 
+        st.caption("Нажмите «Зафиксировать в ИИ», чтобы сохранить результат в чат.")
         if st.button("📤 Зафиксировать корреляции в ИИ", key="fix_corr"):
             try:
                 _ = send_correlation_to_ai(df)
@@ -304,8 +303,10 @@ def show_correlation_tab(df: pd.DataFrame) -> None:
         st.info("Невозможно построить тепловую карту.")
 
 
+import time
+
 def show_pivot_tab(df: pd.DataFrame) -> None:
-    """Вкладка: сводные таблицы (pivot) и фиксация результата в ИИ."""
+    """Вкладка: сводные таблицы (pivot) и фиксация результата в ИИ + визуализация."""
     st.subheader("📊 Сводные таблицы (Pivot)")
 
     col1, col2 = st.columns(2)
@@ -342,9 +343,11 @@ def show_pivot_tab(df: pd.DataFrame) -> None:
     st.session_state["pivot_agg_index"] = agg_options.index(agg_func)
 
     pivot_table = generate_pivot_table(df, index_col, value_col, agg_func)
-    if pivot_table is not None:
+    if pivot_table is not None and not pivot_table.empty:
         st.dataframe(pivot_table, use_container_width=True)
 
+        # === Кнопка фиксации в ИИ сразу после таблицы ===
+        st.caption("Нажмите «Зафиксировать в ИИ», чтобы сохранить результат в чат.")
         if st.button("📤 Зафиксировать в ИИ", key="fix_pivot"):
             try:
                 _ = send_pivot_to_ai(pivot_table, index_col, value_col, agg_func)
@@ -354,5 +357,63 @@ def show_pivot_tab(df: pd.DataFrame) -> None:
                 st.error(f"Не удалось отправить сводную таблицу в ИИ: {e}")
         elif st.session_state.get("pivot_saved"):
             st.info("✅ Сводная таблица уже была зафиксирована.")
+
+        # Подсказка для пользователя
+
+        st.markdown("---")  # 🔽 Разделитель
+
+        # === Блок выбора графика ===
+        st.markdown("### 📉 Визуализация сводной таблицы")
+        chart_type = st.selectbox(
+            "Выберите тип графика",
+            ["Bar", "Pie", "Line"],
+            key="pivot_chart_type"
+        )
+
+        if st.button("Визуализировать", key="pivot_visualize"):
+            # искусственная задержка для реалистичности
+            with st.spinner("⏳ Строим визуализацию..."):
+                time.sleep(1.5)
+
+            if pivot_table.shape[1] < 2:
+                st.warning("⚠️ Для визуализации нужно выбрать корректные переменные (группировка + числовая агрегация).")
+            else:
+                agg_col = pivot_table.columns[1]
+
+                if chart_type == "Bar":
+                    fig = px.bar(
+                        pivot_table,
+                        x=index_col,
+                        y=agg_col,
+                        text=agg_col,
+                        title=f"{chart_type} график: {agg_func}({value_col}) по {index_col}"
+                    )
+                    fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+                    fig.update_layout(yaxis_title=agg_col, xaxis_title=index_col)
+                    st.plotly_chart(fig, use_container_width=True)
+
+                elif chart_type == "Pie":
+                    if pivot_table[index_col].nunique() >= 10:
+                        st.warning("⚠️ Слишком много категорий для круговой диаграммы (10 и более). Выберите другой тип графика.")
+                    else:
+                        fig = px.pie(
+                            pivot_table,
+                            names=index_col,
+                            values=agg_col,
+                            title=f"{chart_type} график: {agg_func}({value_col}) по {index_col}"
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+
+                elif chart_type == "Line":
+                    fig = px.line(
+                        pivot_table,
+                        x=index_col,
+                        y=agg_col,
+                        markers=True,
+                        title=f"{chart_type} график: {agg_func}({value_col}) по {index_col}"
+                    )
+                    fig.update_layout(yaxis_title=agg_col, xaxis_title=index_col)
+                    st.plotly_chart(fig, use_container_width=True)
+
     else:
-        st.info("Возможно, вы выбрали одни и те же столбцы!")
+        st.info("⚠️ Возможно, вы выбрали одни и те же столбцы или таблица пустая.")
