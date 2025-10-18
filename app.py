@@ -274,18 +274,22 @@ if st.session_state['page'] == "Загрузка данных":
             )
 
         st.markdown("---")
+        # Блок подключения ИИ в экспандере
+        with st.expander("🤖 Подключение ИИ", expanded=False):
+            st.caption("При желании укажите цель анализа — ИИ адаптирует помощь под неё.")
 
-        st.markdown("### Подключение ИИ")
-        st.caption("При желании укажите цель анализа — ИИ адаптирует помощь под неё.")
+            user_desc = st.text_area(
+                label="Цель анализа",
+                placeholder="Например: Хочу проанализировать, как меняются цены на жильё по регионам",
+                value=st.session_state.get("analysis_goal", ""),
+                height=100,
+                label_visibility="collapsed",
+                key="analysis_goal_input" 
+            )
 
-        user_desc = st.text_area(
-            label="Цель анализа",
-            placeholder="Например: Хочу проанализировать, как меняются цены на жильё по регионам",
-            value=st.session_state.get("analysis_goal", ""),
-            height=100,
-            label_visibility="collapsed",
-            key="analysis_goal_input" 
-        )
+            if st.button("Подключить ИИ"):
+                msg = notify_ai_dataset_and_goal(df, user_desc, get_chatgpt_response)
+                st.success(msg)
 
         if st.button("🤖 Подключить ИИ"):
             msg = notify_ai_dataset_and_goal(df, user_desc, get_chatgpt_response)
@@ -667,7 +671,7 @@ elif st.session_state["page"] == "Визуальный анализ и EDA":
         st.warning("📥 Сначала загрузите данные.", icon="⚠️")
     else:
         df = st.session_state["df"]
-        tabs = st.tabs(["📈 Графики", "❄️ Корреляции", "📊 Сводные таблицы"])
+        tabs = st.tabs(["📊 Графики", "📈 Корреляции", "📊 Сводные таблицы"])
 
         with tabs[0]:
             show_ai_suggestions(df)
