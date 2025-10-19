@@ -143,13 +143,23 @@ def notify_ai_dataset_and_goal(df, user_desc, get_fn=get_chatgpt_response):
 
         # === Формируем сообщение для ИИ ===
         dataset_info = "\n".join(info)
+        instruction = "Пожалуйста, не предлагай код — только советы, идеи и направления анализа."
+
         if user_desc.strip():
-            prompt = f"[DATASET STRUCTURE]\n{dataset_info}\n\n[ANALYSIS GOAL]\n{user_desc}"
+            prompt = (
+                f"[DATASET STRUCTURE]\n{dataset_info}\n\n"
+                f"[ANALYSIS GOAL]\n{user_desc}\n\n"
+                f"[INSTRUCTION]\n{instruction}"
+            )
             update_context("user_goal", user_desc)
         else:
-            prompt = f"[DATASET STRUCTURE]\n{dataset_info}"
+            prompt = (
+                f"[DATASET STRUCTURE]\n{dataset_info}\n\n"
+                f"[INSTRUCTION]\n{instruction}"
+            )
 
         update_context("dataset_structure", dataset_info)
+
 
         # === Отправляем в ИИ ===
         with st.spinner("📡 Отправляем данные в ИИ..."):
