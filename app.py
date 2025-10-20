@@ -128,7 +128,7 @@ if "app_loaded" not in st.session_state:
 
         <div class="splash-container" id="splash">
             <div class="ai-emoji">✨</div>
-            <div class="splash-title">ClariData</div>
+            <div class="splash-title">ClaryData</div>
             <div class="splash-subtext">Интеллектуальная система анализа больших данных</div>
             <div class="splash-footer">© Created by Rahimov M.A.</div>
         </div>
@@ -746,43 +746,48 @@ if st.session_state.get("page") == "Моделирование и предска
 
     C_value, penalty, max_iter, threshold, test_size, use_class_weight = show_model_settings()
 
+
     if st.button("🚀 Обучить / переобучить модель", use_container_width=True):
         try:
-            # Подготовка данных
-            X, y_encoded, le, num_cols, cat_cols = prepare_features_and_target(df, target_col)
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y_encoded, test_size=test_size, random_state=42, stratify=y_encoded
-            )
+            with st.spinner("⏳ Обучение модели..."):
+                time.sleep(5)
 
-            # Обучение
-            class_weight = "balanced" if use_class_weight else None
-            model, meta = train_logistic_regression(
-                X_train, y_train,
-                C=C_value, penalty=penalty,
-                class_weight=class_weight, max_iter=max_iter,
-                label_encoder=le
-            )
+                # Подготовка данных
+                X, y_encoded, le, num_cols, cat_cols = prepare_features_and_target(df, target_col)
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y_encoded, test_size=test_size, random_state=42, stratify=y_encoded
+                )
 
-            # Оценка
-            metrics, roc_data, pr_data = evaluate_model(model, X_test, y_test, meta, threshold)
-            importance_df = compute_feature_importance(model, meta)
-            short_text = interpret_feature_importance(importance_df, top_n=3)
+                # Обучение
+                class_weight = "balanced" if use_class_weight else None
+                model, meta = train_logistic_regression(
+                    X_train, y_train,
+                    C=C_value, penalty=penalty,
+                    class_weight=class_weight, max_iter=max_iter,
+                    label_encoder=le
+                )
 
-            # Сохраняем в сессию
-            st.session_state["modeling"] = {
-                "model": model, "meta": meta,
-                "threshold": threshold, "metrics": metrics,
-                "roc": roc_data, "pr": pr_data,
-                "importance_df": importance_df, "short_text": short_text,
-                "target_col": target_col, "feature_cols": feature_cols,
-                "params": {
-                    "C": C_value, "penalty": penalty,
-                    "class_weight": class_weight, "max_iter": max_iter,
-                    "test_size": test_size
+                # Оценка
+                metrics, roc_data, pr_data = evaluate_model(model, X_test, y_test, meta, threshold)
+                importance_df = compute_feature_importance(model, meta)
+                short_text = interpret_feature_importance(importance_df, top_n=3)
+
+                # Сохраняем в сессию
+                st.session_state["modeling"] = {
+                    "model": model, "meta": meta,
+                    "threshold": threshold, "metrics": metrics,
+                    "roc": roc_data, "pr": pr_data,
+                    "importance_df": importance_df, "short_text": short_text,
+                    "target_col": target_col, "feature_cols": feature_cols,
+                    "params": {
+                        "C": C_value, "penalty": penalty,
+                        "class_weight": class_weight, "max_iter": max_iter,
+                        "test_size": test_size
+                    }
                 }
-            }
 
-            mark_model_trained()
+                mark_model_trained()
+
             st.success("✅ Модель обучена и сохранена")
 
         except Exception as e:
