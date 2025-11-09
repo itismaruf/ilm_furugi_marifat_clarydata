@@ -43,7 +43,7 @@ def reset_ai_conversation():
     context.clear()
 
 # === Универсальная функция с учётом контекста ===
-def get_chatgpt_response(prompt, model="mistralai/devstral-small-2505:free"):
+def get_chatgpt_response(prompt, model="mistralai/mistral-nemo:free"):
     """Запрос в ИИ с подстановкой глобального контекста."""
     if not prompt or not isinstance(prompt, str):
         return "❌ Пустой или некорректный запрос."
@@ -69,7 +69,7 @@ def get_chatgpt_response(prompt, model="mistralai/devstral-small-2505:free"):
     except Exception as e:
         return f"❌ Ошибка при запросе: {e}"
 
-def chat_with_context(message, model="mistralai/devstral-small-2505:free"):
+def chat_with_context(message, model="mistralai/mistral-nemo:free"):
     """Общение с ИИ с учётом сохранённого контекста (после подключения)."""
     if not message or not isinstance(message, str):
         return "❌ Пустой или некорректный запрос."
